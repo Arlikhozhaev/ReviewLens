@@ -1,100 +1,141 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, BarChart3, Brain, FileUp, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Navbar } from "@/components/layout/navbar";
 
-export default function Home() {
+const FEATURES = [
+  {
+    icon: FileUp,
+    title: "Upload or paste a URL",
+    description:
+      "Drop a CSV of reviews or paste any product URL. ReviewLens handles extraction.",
+  },
+  {
+    icon: Brain,
+    title: "AI clusters the feedback",
+    description:
+      "Embeddings + k-means groups hundreds of reviews into coherent themes automatically.",
+  },
+  {
+    icon: BarChart3,
+    title: "Visual insight dashboard",
+    description:
+      "Sentiment charts, theme breakdowns, and quote cards you can share with your team.",
+  },
+  {
+    icon: Zap,
+    title: "Under 10 seconds",
+    description:
+      "50 reviews analyzed faster than you can read one. Batched embeddings keep it fast.",
+  },
+] as const;
+
+export default function HomePage() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="flex min-h-screen flex-col">
+      <Navbar />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      <main className="flex-1">
+        {/* ── Hero ──────────────────────────────────────────────────── */}
+        <section className="container flex flex-col items-center justify-center gap-6 pb-12 pt-24 text-center md:pt-36">
+          <Badge
+            variant="secondary"
+            className="rounded-full px-4 py-1.5 text-xs font-medium tracking-wide"
           >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+            AI-powered · Built for product teams
+          </Badge>
+
+          <h1 className="max-w-3xl text-balance text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+            Turn reviews into{" "}
+            <span className="bg-gradient-to-r from-primary to-indigo-400 bg-clip-text text-transparent">
+              product insights
+            </span>
+          </h1>
+
+          <p className="max-w-xl text-balance text-lg leading-relaxed text-muted-foreground">
+            Stop reading reviews one by one. ReviewLens clusters hundreds of
+            customer reviews into actionable themes — in seconds.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <Button size="lg" asChild className="gap-2">
+              <Link href="/analyze">
+                Start analyzing <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="#features">See how it works</Link>
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            No account required · First 50 reviews free
+          </p>
+        </section>
+
+        <Separator className="mx-auto max-w-5xl" />
+
+        {/* ── Features ──────────────────────────────────────────────── */}
+        <section id="features" className="container py-20 md:py-28">
+          <div className="mb-12 text-center">
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              How it works
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Four steps from raw reviews to clear decisions.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {FEATURES.map((feature, i) => (
+              <div
+                key={feature.title}
+                className="group rounded-xl border border-border bg-card p-6 transition-all duration-200 hover:border-primary/30 hover:shadow-sm"
+              >
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary/15">
+                  <feature.icon className="h-5 w-5 text-primary" />
+                </div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    0{i + 1}
+                  </span>
+                  <h3 className="font-semibold text-sm leading-snug">
+                    {feature.title}
+                  </h3>
+                </div>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── CTA banner ────────────────────────────────────────────── */}
+        <section className="border-t border-border bg-muted/30">
+          <div className="container flex flex-col items-center gap-4 py-16 text-center md:flex-row md:justify-between md:text-left">
+            <div>
+              <h2 className="text-xl font-bold">Ready to stop guessing?</h2>
+              <p className="mt-1 text-muted-foreground text-sm">
+                Upload a CSV and see what your customers are actually saying.
+              </p>
+            </div>
+            <Button size="lg" asChild className="shrink-0 gap-2">
+              <Link href="/analyze">
+                Analyze your reviews <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      <footer className="border-t border-border">
+        <div className="container flex items-center justify-between py-6 text-xs text-muted-foreground">
+          <span>ReviewLens</span>
+          <span>Built with Next.js + OpenAI</span>
+        </div>
       </footer>
     </div>
   );

@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AnalysisSession
+//
+// One record per user-submitted analysis job.
+// Created immediately on upload; status transitions through the pipeline.
+// ─────────────────────────────────────────────────────────────────────────────
+model AnalysisSession {
+  id            String         @id @default(cuid())
+  shareableSlug String         @unique  // Used in /dashboard/[slug] URLs
+  sourceType    SourceType
+  sourceUrl     String?
+  fileName      String?
+  status        AnalysisStatus @default(PENDING)
+  totalReviews  Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  result  AnalysisResult?
+  reviews Review[]
+
+  @@index([shareableSlug])  // Frequent lookup: GET /dashboard/[slug]
+  @@index([createdAt])      // Future: list sessions sorted by date
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Review
+//
+// Individual reviews belonging to a session.
+// clusterId and sentiment are populated by the AI pipeline.
+// ─────────────────────────────────────────────────────────────────────────────
+model Review {
+  id        String   @id @default(cuid())
+  sessionId String
+  text      String   @db.Text
+  rating    Float?
+  author    String?
+  date      String?
+  sentiment String?  // "positive" | "negative" | "neutral" | "mixed"
+  clusterId Int?     // Populated after k-means clustering
+  createdAt DateTime @default(now())
+
+  session AnalysisSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([clusterId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AnalysisResult
+//
+// The computed output: one record per completed session.
+// sentimentData and themesData are typed Json — see types/index.ts for shape.
+// ─────────────────────────────────────────────────────────────────────────────
+model AnalysisResult {
+  id               String   @id @default(cuid())
+  sessionId        String   @unique
+  executiveSummary String   @db.Text
+  sentimentData    Json     // Serialized SentimentBreakdown
+  themesData       Json     // Serialized ReviewTheme[]
+  averageRating    Float?
+  processingMs     Int?     // Track pipeline duration for optimization
+  createdAt        DateTime @default(now())
+
+  session AnalysisSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SourceType {
+  CSV
+  URL
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
