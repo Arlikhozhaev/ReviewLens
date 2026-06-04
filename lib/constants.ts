@@ -9,6 +9,12 @@ export const MAX_CSV_FILE_SIZE_BYTES = MAX_CSV_FILE_SIZE_MB * 1_024 * 1_024;
 export const MAX_REVIEWS_PER_ANALYSIS = 500;
 export const MIN_REVIEWS_FOR_CLUSTERING = 5;
 
+// Character limit for individual review text.
+// Amazon reviews can be very long — 8000 chars covers 99%+ of real reviews.
+// The AI pipeline will work with the full text; we truncate only the extreme outliers.
+export const MAX_REVIEW_TEXT_LENGTH = 8_000;
+export const MAX_REVIEW_TOKENS = 512;
+
 export const ACCEPTED_CSV_MIME_TYPES = [
   "text/csv",
   "application/csv",
@@ -28,7 +34,6 @@ export const OPENAI_MODELS = {
 } as const;
 
 export const EMBEDDING_BATCH_SIZE = 100; // OpenAI allows up to 2048 inputs/request
-export const MAX_REVIEW_TOKENS = 512;    // Truncate reviews longer than this
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
 
