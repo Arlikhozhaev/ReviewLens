@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { runAnalysisPipeline } from "@/features/analysis";
 import type { ApiResponse } from "@/types";
@@ -17,7 +16,7 @@ export async function POST(
   try {
     const session = await prisma.analysisSession.findUnique({
       where: { shareableSlug: slug },
-      select: { id: true, status: true },
+      select: { id: true },
     });
 
     if (!session) {
@@ -27,20 +26,29 @@ export async function POST(
       );
     }
 
-    // Idempotent — if already processing or done, don't start again
-    if (session.status !== "PENDING") {
+    // Atomic claim. The WHERE clause includes status: "PENDING", so Postgres
+    // serializes concurrent updateMany calls against this row — exactly one
+    // request can match "PENDING" and flip it to "PROCESSING". Every other
+    // concurrent call (e.g. React Strict Mode's double effect invocation in
+    // dev, or a duplicate request in prod) sees count: 0 and backs off
+    // instead of starting a second pipeline run. This replaces a read-then-
+    // write check, which has a race window between the read and the write.
+    const claim = await prisma.analysisSession.updateMany({
+      where: { id: session.id, status: "PENDING" },
+      data: { status: "PROCESSING" },
+    });
+
+    if (claim.count === 0) {
+      // Already claimed by another request, or already done — don't duplicate
       return NextResponse.json({
         success: true as const,
         data: { started: false },
       });
     }
 
-    // waitUntil keeps the serverless function alive after the response is sent.
-    // The pipeline runs in the background while the client polls /status.
-    // On local dev this behaves like a normal async call.
-    waitUntil(
-      runAnalysisPipeline(session.id).catch(console.error)
-    );
+    runAnalysisPipeline(session.id).catch((error: unknown) => {
+      console.error("[process route] Pipeline threw unhandled error:", error);
+    });
 
     return NextResponse.json({
       success: true as const,
