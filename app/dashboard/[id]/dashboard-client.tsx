@@ -1,0 +1,544 @@
+"use client";
+
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  RotateCcw,
+  BarChart3,
+  Clock,
+  Hash,
+  Star,
+  type LucideIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Navbar } from "@/components/layout/navbar";
+import { LoadingSpinner } from "@/components/shared/loading-spinner";
+import { apiFetch, apiPost } from "@/lib/api";
+import { cn, formatNumber, formatPercent, truncate } from "@/lib/utils";
+import {
+  SentimentChart,
+  ThemeBarChart,
+  ShareButton,
+} from "@/features/dashboard";
+import type { AnalysisStatusResponse } from "@/app/api/analysis/[id]/status/route";
+import type { ThemeAnalysis } from "@/features/analysis/types";
+import type { StoredAnalysisResult } from "@/features/analysis/types";
+
+interface DashboardClientProps {
+  slug: string;
+  initialStatus: string;
+  initialTotalReviews: number;
+  initialResult: StoredAnalysisResult | null;
+}
+
+const POLL_INTERVAL_MS = 2_500;
+
+export function DashboardClient({
+  slug,
+  initialStatus,
+  initialTotalReviews,
+  initialResult,
+}: DashboardClientProps) {
+  const router = useRouter();
+
+  // Seed state from server-fetched initial data.
+  // COMPLETED analyses render immediately — zero client round-trips.
+  const [status, setStatus] = useState(initialStatus);
+  const [totalReviews, setTotalReviews] = useState(initialTotalReviews);
+  const [result, setResult] = useState<StoredAnalysisResult | null>(
+    initialResult
+  );
+  const [pageError, setPageError] = useState<string | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const fetchStatus = useCallback(async (): Promise<string> => {
+    try {
+      const data = await apiFetch<AnalysisStatusResponse>(
+        `/api/analysis/${slug}/status`
+      );
+      setStatus(data.status);
+      setTotalReviews(data.totalReviews);
+      if (data.result) setResult(data.result);
+      return data.status;
+    } catch {
+      setPageError("Could not reach the server. Check your connection.");
+      return "FAILED";
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    // If already completed from server data, do nothing
+    if (initialStatus === "COMPLETED" || initialStatus === "FAILED") return;
+
+    async function init() {
+      let current = initialStatus;
+
+      if (current === "PENDING") {
+        try {
+          await apiPost(`/api/analysis/${slug}/process`, {});
+        } catch {
+          // Non-fatal — pipeline may already be starting
+        }
+      }
+
+      intervalRef.current = setInterval(async () => {
+        current = await fetchStatus();
+        if (current === "COMPLETED" || current === "FAILED") {
+          stopPolling();
+        }
+      }, POLL_INTERVAL_MS);
+    }
+
+    void init();
+    return () => stopPolling();
+  }, [slug, initialStatus, fetchStatus, stopPolling]);
+
+  if (pageError) {
+    return (
+      <Shell>
+        <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+          <p className="text-sm text-destructive">{pageError}</p>
+          <Button variant="outline" onClick={() => router.push("/analyze")}>
+            Try again
+          </Button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (status === "PENDING" || status === "PROCESSING") {
+    return <ProcessingScreen totalReviews={totalReviews} />;
+  }
+
+  if (status === "FAILED") {
+    return (
+      <Shell>
+        <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+          <p className="text-lg font-semibold">Analysis failed</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Something went wrong during AI processing. Check your OpenAI API
+            key and billing, then try again.
+          </p>
+          <Button onClick={() => router.push("/analyze")}>Upload again</Button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!result) return null;
+
+  return (
+    <CompletedDashboard
+      slug={slug}
+      totalReviews={totalReviews}
+      result={result}
+      onNewAnalysis={() => router.push("/analyze")}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shell
+// ─────────────────────────────────────────────────────────────────────────────
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen flex-col">
+      <Navbar />
+      <main className="container max-w-4xl space-y-6 py-10">{children}</main>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Completed dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ThemeFilter = "all" | "negative" | "positive" | "other";
+
+function CompletedDashboard({
+  slug: _slug,
+  totalReviews,
+  result,
+  onNewAnalysis,
+}: {
+  slug: string;
+  totalReviews: number;
+  result: StoredAnalysisResult;
+  onNewAnalysis: () => void;
+}) {
+  const [filter, setFilter] = useState<ThemeFilter>("all");
+
+  const sorted = [...result.themes].sort(
+    (a, b) => b.reviewCount - a.reviewCount
+  );
+  const complaints = sorted.filter((t) => t.sentiment === "negative");
+  const praises = sorted.filter((t) => t.sentiment === "positive");
+  const other = sorted.filter(
+    (t) => t.sentiment === "neutral" || t.sentiment === "mixed"
+  );
+
+  const visible =
+    filter === "negative" ? complaints
+    : filter === "positive" ? praises
+    : filter === "other" ? other
+    : sorted;
+
+  const filterOptions: { value: ThemeFilter; label: string; count: number }[] =
+    [
+      { value: "all", label: "All", count: sorted.length },
+      { value: "negative", label: "Complaints", count: complaints.length },
+      { value: "positive", label: "Praises", count: praises.length },
+      ...(other.length > 0
+        ? [{ value: "other" as ThemeFilter, label: "Other", count: other.length }]
+        : []),
+    ];
+
+  const seconds = (result.processingMs / 1_000).toFixed(1);
+
+  return (
+    <Shell>
+      {/* ── Header ────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Analysis Results
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {formatNumber(totalReviews)} reviews · {result.themes.length} themes
+            · {seconds}s
+            {result.averageRating
+              ? ` · ${result.averageRating.toFixed(1)}★ avg`
+              : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ShareButton />
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={onNewAnalysis}
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            New analysis
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* ── Stat cards ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          icon={BarChart3}
+          label="Reviews analyzed"
+          value={formatNumber(totalReviews)}
+        />
+        <StatCard
+          icon={Hash}
+          label="Themes found"
+          value={String(result.themes.length)}
+        />
+        <StatCard
+          icon={Clock}
+          label="Processing time"
+          value={`${seconds}s`}
+        />
+        {result.averageRating ? (
+          <StatCard
+            icon={Star}
+            label="Average rating"
+            value={`${result.averageRating.toFixed(1)} / 5`}
+          />
+        ) : (
+          <StatCard
+            icon={Star}
+            label="Top sentiment"
+            value={
+              result.sentimentBreakdown.positive >=
+              result.sentimentBreakdown.negative
+                ? "Positive"
+                : "Negative"
+            }
+          />
+        )}
+      </div>
+
+      {/* ── Executive summary ─────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Executive Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm leading-relaxed">{result.executiveSummary}</p>
+        </CardContent>
+      </Card>
+
+      {/* ── Charts ────────────────────────────────────────────────────── */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              Sentiment breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SentimentChart data={result.sentimentBreakdown} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              Theme distribution
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ThemeBarChart themes={result.themes} />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Themes ────────────────────────────────────────────────────── */}
+      <section>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">
+            Themes{" "}
+            <span className="font-normal text-muted-foreground">
+              · {visible.length} showing
+            </span>
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {filterOptions.map(({ value, label, count }) => (
+              <button
+                key={value}
+                onClick={() => setFilter(value)}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  filter === value
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}{" "}
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    filter === value ? "opacity-70" : "opacity-50"
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {visible.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border py-12 text-center">
+            <p className="text-sm text-muted-foreground">
+              No themes in this category.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {visible.map((theme) => (
+              <ThemeCard key={theme.clusterId} theme={theme} />
+            ))}
+          </div>
+        )}
+      </section>
+    </Shell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+        {label}
+      </div>
+      <p className="truncate text-2xl font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+type SentimentKey = ThemeAnalysis["sentiment"];
+
+type ThemeStyle = {
+  border: string;
+  pct: string;
+  bar: string;
+  quote: string;
+};
+
+const THEME_STYLES: Record<SentimentKey, ThemeStyle> = {
+  positive: {
+    border: "border-l-emerald-500",
+    pct: "text-emerald-600 dark:text-emerald-400",
+    bar: "bg-emerald-500",
+    quote: "border-emerald-200 dark:border-emerald-900",
+  },
+  negative: {
+    border: "border-l-red-500",
+    pct: "text-red-600 dark:text-red-400",
+    bar: "bg-red-500",
+    quote: "border-red-200 dark:border-red-900",
+  },
+  neutral: {
+    border: "border-l-zinc-400",
+    pct: "text-muted-foreground",
+    bar: "bg-zinc-400",
+    quote: "border-border",
+  },
+  mixed: {
+    border: "border-l-amber-500",
+    pct: "text-amber-600 dark:text-amber-400",
+    bar: "bg-amber-500",
+    quote: "border-amber-200 dark:border-amber-900",
+  },
+};
+
+function ThemeCard({ theme }: { theme: ThemeAnalysis }) {
+  const s = THEME_STYLES[theme.sentiment];
+
+  return (
+    <Card className={cn("flex flex-col border-l-4", s.border)}>
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-sm font-semibold leading-snug">
+            {theme.label}
+          </CardTitle>
+          <span className={cn("shrink-0 text-sm font-bold tabular-nums", s.pct)}>
+            {formatPercent(theme.percentage, 0)}
+          </span>
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {theme.description}
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col gap-3 pt-0">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full", s.bar)}
+              style={{ width: `${Math.min(theme.percentage, 100)}%` }}
+            />
+          </div>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {formatNumber(theme.reviewCount)}
+          </span>
+        </div>
+        {theme.exampleQuotes.map((quote, i) => (
+          <blockquote
+            key={i}
+            className={cn(
+              "border-l-2 pl-3 text-xs italic leading-relaxed text-muted-foreground",
+              s.quote
+            )}
+          >
+            &ldquo;{truncate(quote, 160)}&rdquo;
+          </blockquote>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Processing screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PIPELINE_STEPS = [
+  "Generating embeddings",
+  "Clustering similar reviews",
+  "Summarizing themes",
+] as const;
+
+function ProcessingScreen({ totalReviews }: { totalReviews?: number }) {
+  const [stepIdx, setStepIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(
+      () => setStepIdx((i) => Math.min(i + 1, PIPELINE_STEPS.length - 1)),
+      5_000
+    );
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <Shell>
+      <div className="flex flex-col items-center justify-center gap-8 py-24 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-muted">
+          <LoadingSpinner size="lg" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold">
+            Analyzing{" "}
+            {totalReviews
+              ? `${formatNumber(totalReviews)} reviews`
+              : "your reviews"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {PIPELINE_STEPS[stepIdx]}…
+          </p>
+        </div>
+        <div className="w-full max-w-[260px] space-y-3">
+          <Progress
+            value={((stepIdx + 1) / PIPELINE_STEPS.length) * 80 + 8}
+            className="h-1.5"
+          />
+          <div className="flex justify-center gap-2">
+            {PIPELINE_STEPS.map((_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "inline-block h-1.5 w-1.5 rounded-full transition-colors duration-300",
+                  i < stepIdx
+                    ? "bg-emerald-500"
+                    : i === stepIdx
+                    ? "bg-primary"
+                    : "bg-muted-foreground/25"
+                )}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Typically 10–30 seconds
+          </p>
+        </div>
+      </div>
+    </Shell>
+  );
+}
