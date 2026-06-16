@@ -35,3 +35,15 @@ export interface PipelineResult {
   averageRating?: number;
   processingMs: number;
 }
+
+/**
+ * The fully computed result stored in AnalysisResult.
+ * Single source of truth used by: status route, dashboard page, dashboard client.
+ */
+export interface StoredAnalysisResult {
+  executiveSummary: string;
+  sentimentBreakdown: SentimentBreakdown;
+  themes: ThemeAnalysis[];
+  averageRating?: number;
+  processingMs: number;
+}
