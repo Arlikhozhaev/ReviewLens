@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { ApiResponse, SentimentBreakdown } from "@/types";
-import type { ThemeAnalysis } from "@/features/analysis/types";
+import type { ThemeAnalysis, StoredAnalysisResult } from "@/features/analysis/types";
 
 export interface AnalysisStatusResponse {
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
   totalReviews: number;
-  result?: {
-    executiveSummary: string;
-    sentimentBreakdown: SentimentBreakdown;
-    themes: ThemeAnalysis[];
-    averageRating?: number;
-    processingMs: number;
-  };
+  result?: StoredAnalysisResult;
 }
 
 interface RouteContext {
