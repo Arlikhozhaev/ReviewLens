@@ -1,7 +1,7 @@
 import { auth } from "@/auth.edge";
 import { NextResponse } from "next/server";
 
-const PROTECTED_PAGE_PREFIXES = ["/analyze", "/sessions", "/compare"] as const;
+const PROTECTED_PAGE_PREFIXES = ["/analyze", "/sessions", "/compare", "/team"] as const;
 
 export default auth((req) => {
   const { nextUrl, auth: session } = req;
