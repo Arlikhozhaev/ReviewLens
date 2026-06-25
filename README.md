@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReviewLens
 
-## Getting Started
+Turn customer review CSVs into actionable product insights — themes, sentiment, and an executive summary — in under a minute.
 
-First, run the development server:
+## Stack
+
+- **Next.js 14** (App Router)
+- **PostgreSQL** via **Prisma** (Supabase-compatible pooling)
+- **OpenAI** — `text-embedding-3-small` + `gpt-4o-mini`
+- **Tailwind CSS** + shadcn/ui
+
+## Quick start
 
 ```bash
+cp .env.example .env.local
+# Set DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, NEXT_PUBLIC_APP_URL
+
+npm install
+npx prisma migrate deploy
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How it works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Upload** — CSV with a `review` column (optional: `rating`, `author`, `date`). Max 500 reviews / 10 MB.
+2. **Pipeline** — embeddings → k-means clustering → per-theme GPT summaries → executive summary.
+3. **Dashboard** — shareable report at `/dashboard/[slug]`.
 
-## Learn More
+Typical processing time: **15–45 seconds** for 100–500 reviews (depends on OpenAI latency).
 
-To learn more about Next.js, take a look at the following resources:
+## API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Route | Description |
+|-------|-------------|
+| `POST /api/analysis` | Create session + bulk insert reviews |
+| `POST /api/analysis/[slug]/process` | Start pipeline (atomic claim) |
+| `GET /api/analysis/[slug]/status` | Poll status + result |
+| `GET /api/sessions?slugs=…` | List sessions by shareable slug (browser history) |
+| `GET /api/health` | DB connectivity check |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Scripts
 
-## Deploy on Vercel
+```bash
+npm run dev          # Development server
+npm run build        # Production build
+npm run type-check   # TypeScript
+npm run lint         # ESLint
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Pipeline uses `@vercel/functions` `waitUntil` so analysis completes after the HTTP response on Vercel.
+- Rate limits: 20 uploads / hour / IP, 30 pipeline starts / hour / IP (in-memory; use Redis for strict multi-instance limits).
+- Sessions page shows analyses **tracked in this browser** only — share links work globally without login.
+- Stuck `PROCESSING` sessions auto-recover after 10 minutes.
+
+## Environment
+
+See `.env.example` for required variables.

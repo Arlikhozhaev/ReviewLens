@@ -56,3 +56,27 @@ export const NUM_CLUSTERS = {
   MAX: 8,
   DEFAULT: 5, // K for k-means — tuned empirically for 50–200 reviews
 } as const;
+
+// ── Pipeline timing (used for UX estimates + recovery) ───────────────────────
+
+/** If PROCESSING exceeds this, allow a new pipeline claim. */
+export const PIPELINE_STALE_MS = 10 * 60 * 1_000;
+
+/** Dashboard shows a "taking longer" message after this. */
+export const PIPELINE_UI_TIMEOUT_MS = 90 * 1_000;
+
+/** Client poll interval while waiting for results. */
+export const STATUS_POLL_INTERVAL_MS = 2_000;
+
+/** Rough per-review embedding time for UX copy (not a SLA). */
+export const ESTIMATED_MS_PER_REVIEW = 35;
+
+/** Base LLM summarization overhead regardless of review count. */
+export const ESTIMATED_SUMMARIZATION_BASE_MS = 8_000;
+
+// ── Rate limits ─────────────────────────────────────────────────────────────
+
+export const RATE_LIMITS = {
+  CREATE_ANALYSIS: { limit: 20, windowMs: 60 * 60 * 1_000 },
+  START_PIPELINE: { limit: 30, windowMs: 60 * 60 * 1_000 },
+} as const;
