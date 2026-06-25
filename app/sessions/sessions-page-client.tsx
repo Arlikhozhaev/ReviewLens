@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus, BarChart3, MessageSquare, CalendarRange, FolderArchive } from "lucide-react";
+import { Plus, BarChart3, MessageSquare, CalendarRange, FolderArchive, GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -111,16 +111,31 @@ export function SessionsPageClient() {
                   : `${sessions.length} analyses · ${completedCount} completed`}
             </p>
           </div>
-          <Button
-            size="default"
-            asChild
-            className="gap-2 shadow-md transition-transform duration-150 hover:scale-[1.02]"
-          >
-            <Link href="/analyze">
-              <Plus className="h-4 w-4" aria-hidden />
-              New analysis
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {completedCount >= 2 && (
+              <Button
+                size="default"
+                variant="outline"
+                asChild
+                className="gap-2 transition-transform duration-150 hover:scale-[1.02]"
+              >
+                <Link href="/compare">
+                  <GitCompareArrows className="h-4 w-4" aria-hidden />
+                  Compare
+                </Link>
+              </Button>
+            )}
+            <Button
+              size="default"
+              asChild
+              className="gap-2 shadow-md transition-transform duration-150 hover:scale-[1.02]"
+            >
+              <Link href="/analyze">
+                <Plus className="h-4 w-4" aria-hidden />
+                New analysis
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {!loading && sessions.length > 0 && (
