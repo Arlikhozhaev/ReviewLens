@@ -16,7 +16,7 @@ export function FinalCta() {
         </h2>
         <p className="max-w-md text-sm leading-relaxed text-muted-foreground md:text-base">
           Upload your first dataset and get a full report in under a minute.
-          No credit card. No account. Just insights.
+          No credit card. Sign in with email. Just insights.
         </p>
         <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row">
           <Button size="lg" asChild className="h-11 gap-2 px-7 shadow-md">
