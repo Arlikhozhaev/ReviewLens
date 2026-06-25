@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus, BarChart3, MessageSquare, CalendarRange, FolderArchive, GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { apiFetch, ApiError } from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
 import type { SessionCardData } from "@/features/sessions";
 import type { SessionsListResponse } from "@/app/api/sessions/route";
+import type { OrgSummary } from "@/app/api/orgs/route";
 
 function StatCard({
   label,
@@ -45,12 +47,30 @@ function StatCard({
 }
 
 export function SessionsPageClient() {
+  const searchParams = useSearchParams();
+  const scopeParam = searchParams.get("scope") ?? "personal";
+
   const [sessions, setSessions] = useState<SessionCardData[]>([]);
+  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
+  const [scope, setScope] = useState(scopeParam);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    setScope(scopeParam);
+  }, [scopeParam]);
+
+  useEffect(() => {
+    void apiFetch<{ orgs: OrgSummary[] }>("/api/orgs")
+      .then((data) => setOrgs(data.orgs))
+      .catch(() => {});
+  }, []);
+
   const loadSessions = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await apiFetch<SessionsListResponse>("/api/sessions");
+      const qs =
+        scope === "personal" ? "" : `?scope=${encodeURIComponent(scope)}`;
+      const data = await apiFetch<SessionsListResponse>(`/api/sessions${qs}`);
       setSessions(data.sessions);
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 401) {
@@ -61,7 +81,7 @@ export function SessionsPageClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     void loadSessions();
@@ -107,11 +127,35 @@ export function SessionsPageClient() {
               {loading
                 ? "Loading…"
                 : sessions.length === 0
-                  ? "Your analyses appear here after you sign in and upload"
+                  ? scope === "personal"
+                    ? "Your analyses appear here after you sign in and upload"
+                    : "No team analyses yet — run one from Analyze and save to this workspace"
                   : `${sessions.length} analyses · ${completedCount} completed`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {orgs.length > 0 && (
+              <select
+                value={scope}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setScope(next);
+                  const url =
+                    next === "personal"
+                      ? "/sessions"
+                      : `/sessions?scope=${encodeURIComponent(next)}`;
+                  window.history.replaceState(null, "", url);
+                }}
+                className="h-9 rounded-lg border border-input bg-card/60 px-3 text-sm shadow-sm"
+              >
+                <option value="personal">Personal</option>
+                {orgs.map((org) => (
+                  <option key={org.id} value={org.slug}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            )}
             {completedCount >= 2 && (
               <Button
                 size="default"
