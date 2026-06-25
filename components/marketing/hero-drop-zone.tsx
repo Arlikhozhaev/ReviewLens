@@ -78,7 +78,7 @@ export function HeroDropZone() {
             {isDragging ? "Drop it — we'll analyze it" : "Try it now — drop your CSV"}
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Free · no account · results in under 60 seconds
+            Free to start · sign in with email · results in under 60 seconds
           </p>
         </div>
 

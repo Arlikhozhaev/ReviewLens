@@ -36,8 +36,8 @@ const TRUST_ITEMS = [
   },
   {
     icon: Link2,
-    title: "No account needed",
-    description: "Start analyzing immediately",
+    title: "Magic-link sign-in",
+    description: "No password — email link only",
   },
 ] as const;
 

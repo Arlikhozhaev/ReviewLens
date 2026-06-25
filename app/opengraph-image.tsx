@@ -144,7 +144,7 @@ export default async function OpenGraphImage() {
               }}
             >
               Upload CSV → get themes, sentiment &amp; executive summary in
-              under 60 seconds. Free. No account.
+              under 60 seconds. Free to start.
             </p>
 
             <div
