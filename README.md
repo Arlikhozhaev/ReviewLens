@@ -4,6 +4,13 @@
 
 ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (embeddings → clustering → summarization), and produces a structured insight report: top complaints, top praises, sentiment breakdown, and an executive summary. Every report gets a permanent shareable link with no login required to view it.
 
+- **Next.js 14** (App Router)
+- **PostgreSQL** + **Prisma**
+- **Auth.js** (magic link via Resend)
+- **OpenAI** — embeddings + GPT-4o-mini
+- **Inngest** — background pipeline (optional)
+- **Upstash Redis** — distributed rate limits (optional)
+- **Sentry** — error monitoring (optional)
 [Live demo](https://review-lens-ten.vercel.app/) · [Report an issue](mailto:arlikhozhaevca@gmail.com)
 
 ---
@@ -17,26 +24,6 @@ ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (e
 5. **Report** — A dashboard shows sentiment breakdown, theme distribution chart, complaint and praise cards with example quotes, and a shareable URL.
 
 Analyzing 50 reviews takes under 10 seconds end to end.
-
----
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14 App Router (RSC + Server Actions) |
-| Language | TypeScript (strict mode) |
-| Styling | Tailwind CSS + shadcn/ui (Nova preset) |
-| Charts | Recharts |
-| Database | PostgreSQL via Supabase |
-| ORM | Prisma 6 |
-| Auth | Auth.js (magic link via Resend) |
-| AI | OpenAI `text-embedding-3-small` + `gpt-4o-mini` |
-| Jobs | Inngest (optional — `waitUntil` fallback) |
-| Rate limits | Upstash Redis (optional — in-memory fallback) |
-| Monitoring | Sentry (optional) |
-| Validation | Zod |
-| Deployment | Vercel |
 
 ---
 
@@ -55,20 +42,58 @@ git clone https://github.com/Arlikhozhaev/ReviewLens.git
 cd reviewlens
 npm install
 cp .env.example .env.local
+```
+
+Push the database schema:
+
+```bash
+npx prisma migrate dev --name init
+```
+
+Start the dev server:
+
+```bash
+cp .env.example .env.local
 # Required: DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, AUTH_SECRET
 # Optional: RESEND_API_KEY, UPSTASH_*, INNGEST_*, SENTRY_*
 
+npm install
 npx prisma migrate deploy
 npx prisma generate
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [localhost:3000](http://localhost:3000).
 
 ### Dev sign-in (no Resend)
 
 Without `RESEND_API_KEY`, magic links print to the **terminal** when you submit the login form.
 
+## Production services
+
+| Service | Purpose | Required? |
+|---------|---------|-------------|
+| **Resend** | Magic link emails | Production |
+| **Upstash Redis** | Rate limits across instances | Production |
+| **Inngest** | Reliable background pipeline | Production |
+| **Sentry** | Error monitoring | Recommended |
+
+### Inngest local dev
+
+```bash
+npx inngest-cli dev
+```
+
+Point Inngest at `http://localhost:3000/api/inngest`.
+
+Without Inngest, the pipeline falls back to Vercel `waitUntil`.
+
+## Auth & tenancy
+
+- Sign in at `/login` with email magic link
+- `/analyze` and `/sessions` require authentication
+- Analyses are linked to `User.id` in the database
+- Dashboard share links (`/dashboard/[slug]`) remain public for viewers
 ### Environment variables
 
 See `.env.example` for placeholder formats. Key variables:
@@ -159,6 +184,14 @@ reviewlens/
 
 ---
 
+| Route | Auth | Description |
+|-------|------|-------------|
+| `POST /api/analysis` | Required | Create session + reviews |
+| `GET /api/sessions` | Required | List user's analyses |
+| `POST /api/analysis/[slug]/process` | Public | Start pipeline |
+| `GET /api/analysis/[slug]/status` | Public | Poll status |
+| `GET /api/health` | Public | DB + service flags |
+| `POST /api/inngest` | Inngest | Job worker webhook |
 ## AI pipeline
 
 ```
@@ -187,6 +220,15 @@ The pipeline is triggered from the dashboard via `POST /api/analysis/[slug]/proc
 ## Scripts
 
 ```bash
+npm run dev
+npm run build
+npm run type-check
+npm run lint
+```
+
+## Logs
+
+Structured JSON logs include `requestId`, `sessionId`, `userId`, pipeline `stage`, and OpenAI `totalTokens`.
 npm run dev          # Start development server
 npm run build        # Production build
 npm run type-check   # tsc --noEmit
