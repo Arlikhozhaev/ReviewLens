@@ -15,6 +15,7 @@ import {
 } from "@/features/upload";
 import { apiPost } from "@/lib/api";
 import { MIN_REVIEWS_FOR_CLUSTERING } from "@/lib/constants";
+import { trackSession } from "@/lib/session-history";
 import { consumePendingUpload } from "@/lib/pending-upload";
 import type { CreateAnalysisResponse } from "@/app/api/analysis/route";
 import { cn } from "@/lib/utils";
@@ -74,6 +75,7 @@ export default function AnalyzePage() {
       );
 
       toast.dismiss(loadingToast);
+      trackSession(response.shareableSlug, { fileName: currentFile?.name });
       toast.success("Reviews uploaded! Preparing analysis...");
       router.push(`/dashboard/${response.shareableSlug}`);
     } catch (err) {
