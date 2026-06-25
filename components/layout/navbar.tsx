@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ArrowRight, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { UserNav } from "@/components/layout/user-nav";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
 
@@ -74,6 +75,7 @@ export function Navbar() {
 
         <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
+          <UserNav />
           {!isHome && (
             <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
               <Link href="/">Home</Link>

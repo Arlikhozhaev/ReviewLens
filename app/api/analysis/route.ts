@@ -3,10 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { analyzeRequestSchema } from "@/lib/validations/review";
 import { generateShareableSlug } from "@/lib/utils";
 import { RATE_LIMITS } from "@/lib/constants";
-import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getClientIp,
+  rateLimitResponseHeaders,
+} from "@/lib/rate-limit";
+import {
+  getRequestId,
+  requireAuthUser,
+  unauthorizedResponse,
+} from "@/lib/auth-helpers";
+import { createLogger } from "@/lib/logger";
 import type { ApiResponse } from "@/types";
 
-// Export the response type — client components import this for type safety
 export interface CreateAnalysisResponse {
   sessionId: string;
   shareableSlug: string;
@@ -15,9 +24,18 @@ export interface CreateAnalysisResponse {
 export async function POST(
   request: Request
 ): Promise<NextResponse<ApiResponse<CreateAnalysisResponse>>> {
+  const requestId = getRequestId(request);
+  const log = createLogger({ requestId, component: "create-analysis" });
+
+  const authUser = await requireAuthUser();
+  if (!authUser) {
+    return unauthorizedResponse();
+  }
+
   const ip = getClientIp(request);
-  const limited = rateLimit(
-    `create:${ip}`,
+  const rateKey = `create:${authUser.userId}:${ip}`;
+  const limited = await checkRateLimit(
+    rateKey,
     RATE_LIMITS.CREATE_ANALYSIS.limit,
     RATE_LIMITS.CREATE_ANALYSIS.windowMs
   );
@@ -31,9 +49,7 @@ export async function POST(
       },
       {
         status: 429,
-        headers: limited.retryAfterSec
-          ? { "Retry-After": String(limited.retryAfterSec) }
-          : undefined,
+        headers: rateLimitResponseHeaders(limited),
       }
     );
   }
@@ -42,13 +58,12 @@ export async function POST(
     const body: unknown = await request.json();
     const parsed = analyzeRequestSchema.safeParse(body);
 
-    if (!parsed.success) {  
-        if (process.env.NODE_ENV === "development") {
-            console.error(
-                "[POST /api/analysis] Validation failed:",
-                JSON.stringify(parsed.error.flatten().fieldErrors, null, 2)
-            );
-    }
+    if (!parsed.success) {
+      if (process.env.NODE_ENV === "development") {
+        log.warn("Validation failed", {
+          errors: parsed.error.flatten().fieldErrors,
+        });
+      }
       return NextResponse.json(
         {
           success: false as const,
@@ -60,13 +75,12 @@ export async function POST(
     }
 
     const { reviews, sourceType, sourceUrl, fileName } = parsed.data;
-
     const shareableSlug = generateShareableSlug();
 
-    // Create the session first — reviews reference it via sessionId
     const session = await prisma.analysisSession.create({
       data: {
         shareableSlug,
+        userId: authUser.userId,
         sourceType: sourceType === "csv" ? "CSV" : "URL",
         sourceUrl: sourceUrl ?? null,
         fileName: fileName ?? null,
@@ -75,7 +89,6 @@ export async function POST(
       },
     });
 
-    // createMany is significantly faster than looping create() for bulk inserts
     await prisma.review.createMany({
       data: reviews.map((r) => ({
         sessionId: session.id,
@@ -86,6 +99,12 @@ export async function POST(
       })),
     });
 
+    log.info("Analysis session created", {
+      sessionId: session.id,
+      userId: authUser.userId,
+      reviewCount: reviews.length,
+    });
+
     return NextResponse.json({
       success: true as const,
       data: {
@@ -94,7 +113,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error("[POST /api/analysis]", error);
+    log.error("Failed to create analysis session", { error: String(error) });
     return NextResponse.json(
       {
         success: false as const,

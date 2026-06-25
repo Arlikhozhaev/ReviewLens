@@ -1,6 +1,7 @@
 import { openai } from "@/lib/openai";
 import { OPENAI_MODELS, EMBEDDING_BATCH_SIZE } from "@/lib/constants";
 import { sleep } from "@/lib/utils";
+import type { createLogger } from "@/lib/logger";
 import type { EmbeddedReview } from "../types";
 
 interface ReviewInput {
@@ -8,13 +9,16 @@ interface ReviewInput {
   text: string;
 }
 
+type Logger = ReturnType<typeof createLogger>;
+
 const EMBEDDING_CONCURRENCY = 2;
 
 async function embedBatch(
   batch: ReviewInput[],
   batchIdx: number,
-  totalBatches: number
-): Promise<EmbeddedReview[]> {
+  totalBatches: number,
+  log: Logger
+): Promise<{ embedded: EmbeddedReview[]; tokens: number }> {
   const texts = batch.map((r) => r.text.slice(0, 6_000));
   let attempt = 0;
   const maxAttempts = 3;
@@ -26,6 +30,12 @@ async function embedBatch(
         input: texts,
         encoding_format: "float",
       });
+
+      const tokens = response.usage?.total_tokens ?? 0;
+      log.openaiUsage("embeddings.batch", {
+        total: tokens,
+        prompt: response.usage?.prompt_tokens,
+      }, { batch: batchIdx + 1, totalBatches });
 
       const embedded: EmbeddedReview[] = [];
       response.data.forEach((item, i) => {
@@ -39,8 +49,7 @@ async function embedBatch(
         }
       });
 
-      console.log(`[embeddings] Batch ${batchIdx + 1}/${totalBatches} done`);
-      return embedded;
+      return { embedded, tokens };
     } catch (error: unknown) {
       attempt++;
 
@@ -52,9 +61,10 @@ async function embedBatch(
 
       if (isRateLimit || attempt < maxAttempts) {
         const waitMs = Math.pow(2, attempt) * 1_000;
-        console.warn(
-          `[embeddings] Batch ${batchIdx + 1} attempt ${attempt} failed. Retrying in ${waitMs}ms`
-        );
+        log.warn(`Embedding batch ${batchIdx + 1} retry`, {
+          attempt,
+          waitMs,
+        });
         await sleep(waitMs);
       } else {
         throw new Error(
@@ -64,34 +74,42 @@ async function embedBatch(
     }
   }
 
-  return [];
+  return { embedded: [], tokens: 0 };
 }
 
 export async function generateEmbeddings(
-  reviews: ReviewInput[]
-): Promise<EmbeddedReview[]> {
+  reviews: ReviewInput[],
+  log: Logger
+): Promise<{ reviews: EmbeddedReview[]; totalTokens: number }> {
   const batches: ReviewInput[][] = [];
   for (let i = 0; i < reviews.length; i += EMBEDDING_BATCH_SIZE) {
     batches.push(reviews.slice(i, i + EMBEDDING_BATCH_SIZE));
   }
 
-  console.log(
-    `[embeddings] ${reviews.length} reviews → ${batches.length} batches (concurrency ${EMBEDDING_CONCURRENCY})`
-  );
+  log.info("Generating embeddings", {
+    reviewCount: reviews.length,
+    batchCount: batches.length,
+    concurrency: EMBEDDING_CONCURRENCY,
+  });
 
   const results: EmbeddedReview[] = [];
+  let totalTokens = 0;
 
   for (let i = 0; i < batches.length; i += EMBEDDING_CONCURRENCY) {
     const chunk = batches.slice(i, i + EMBEDDING_CONCURRENCY);
     const chunkResults = await Promise.all(
-      chunk.map((batch, j) => embedBatch(batch, i + j, batches.length))
+      chunk.map((batch, j) => embedBatch(batch, i + j, batches.length, log))
     );
-    results.push(...chunkResults.flat());
+
+    for (const result of chunkResults) {
+      results.push(...result.embedded);
+      totalTokens += result.tokens;
+    }
 
     if (i + EMBEDDING_CONCURRENCY < batches.length) {
       await sleep(150);
     }
   }
 
-  return results;
+  return { reviews: results, totalTokens };
 }

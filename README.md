@@ -5,57 +5,78 @@ Turn customer review CSVs into actionable product insights — themes, sentiment
 ## Stack
 
 - **Next.js 14** (App Router)
-- **PostgreSQL** via **Prisma** (Supabase-compatible pooling)
-- **OpenAI** — `text-embedding-3-small` + `gpt-4o-mini`
-- **Tailwind CSS** + shadcn/ui
+- **PostgreSQL** + **Prisma**
+- **Auth.js** (magic link via Resend)
+- **OpenAI** — embeddings + GPT-4o-mini
+- **Inngest** — background pipeline (optional)
+- **Upstash Redis** — distributed rate limits (optional)
+- **Sentry** — error monitoring (optional)
 
 ## Quick start
 
 ```bash
 cp .env.example .env.local
-# Set DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, NEXT_PUBLIC_APP_URL
+# Required: DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, AUTH_SECRET
+# Optional: RESEND_API_KEY, UPSTASH_*, INNGEST_*, SENTRY_*
 
 npm install
 npx prisma migrate deploy
+npx prisma generate
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## How it works
+### Dev sign-in (no Resend)
 
-1. **Upload** — CSV with a `review` column (optional: `rating`, `author`, `date`). Max 500 reviews / 10 MB.
-2. **Pipeline** — embeddings → k-means clustering → per-theme GPT summaries → executive summary.
-3. **Dashboard** — shareable report at `/dashboard/[slug]`.
+Without `RESEND_API_KEY`, magic links print to the **terminal** when you submit the login form.
 
-Typical processing time: **15–45 seconds** for 100–500 reviews (depends on OpenAI latency).
+## Production services
+
+| Service | Purpose | Required? |
+|---------|---------|-------------|
+| **Resend** | Magic link emails | Production |
+| **Upstash Redis** | Rate limits across instances | Production |
+| **Inngest** | Reliable background pipeline | Production |
+| **Sentry** | Error monitoring | Recommended |
+
+### Inngest local dev
+
+```bash
+npx inngest-cli dev
+```
+
+Point Inngest at `http://localhost:3000/api/inngest`.
+
+Without Inngest, the pipeline falls back to Vercel `waitUntil`.
+
+## Auth & tenancy
+
+- Sign in at `/login` with email magic link
+- `/analyze` and `/sessions` require authentication
+- Analyses are linked to `User.id` in the database
+- Dashboard share links (`/dashboard/[slug]`) remain public for viewers
 
 ## API
 
-| Route | Description |
-|-------|-------------|
-| `POST /api/analysis` | Create session + bulk insert reviews |
-| `POST /api/analysis/[slug]/process` | Start pipeline (atomic claim) |
-| `GET /api/analysis/[slug]/status` | Poll status + result |
-| `GET /api/sessions?slugs=…` | List sessions by shareable slug (browser history) |
-| `GET /api/health` | DB connectivity check |
+| Route | Auth | Description |
+|-------|------|-------------|
+| `POST /api/analysis` | Required | Create session + reviews |
+| `GET /api/sessions` | Required | List user's analyses |
+| `POST /api/analysis/[slug]/process` | Public | Start pipeline |
+| `GET /api/analysis/[slug]/status` | Public | Poll status |
+| `GET /api/health` | Public | DB + service flags |
+| `POST /api/inngest` | Inngest | Job worker webhook |
 
 ## Scripts
 
 ```bash
-npm run dev          # Development server
-npm run build        # Production build
-npm run type-check   # TypeScript
-npm run lint         # ESLint
+npm run dev
+npm run build
+npm run type-check
+npm run lint
 ```
 
-## Production notes
+## Logs
 
-- Pipeline uses `@vercel/functions` `waitUntil` so analysis completes after the HTTP response on Vercel.
-- Rate limits: 20 uploads / hour / IP, 30 pipeline starts / hour / IP (in-memory; use Redis for strict multi-instance limits).
-- Sessions page shows analyses **tracked in this browser** only — share links work globally without login.
-- Stuck `PROCESSING` sessions auto-recover after 10 minutes.
-
-## Environment
-
-See `.env.example` for required variables.
+Structured JSON logs include `requestId`, `sessionId`, `userId`, pipeline `stage`, and OpenAI `totalTokens`.
