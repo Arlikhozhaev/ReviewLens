@@ -80,9 +80,10 @@ export const analyzeRequestSchema = z.object({
       MAX_REVIEWS_PER_ANALYSIS,
       `Maximum ${MAX_REVIEWS_PER_ANALYSIS} reviews per analysis`
     ),
-  sourceType: z.enum(["csv", "url"]),
+  sourceType: z.enum(["csv", "url", "paste"]),
   sourceUrl: z.string().url().optional(),
   fileName: z.string().optional(),
+  organizationId: z.string().cuid().optional(),
 });
 
 // ── File upload (client-side pre-check) ───────────────────────────────────────

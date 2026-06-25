@@ -7,6 +7,7 @@ import {
   shareAccessCookieName,
   verifyShareAccessToken,
 } from "@/lib/share-access";
+import { canViewSession, isSessionCreator } from "@/lib/org/access";
 
 interface RouteContext {
   params: { id: string };
@@ -32,6 +33,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
     select: {
       id: true,
       userId: true,
+      organizationId: true,
       fileName: true,
       sharePasswordHash: true,
       shareExpiresAt: true,
@@ -57,11 +59,11 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
   // Same access rules as the dashboard view.
   const authUser = await auth();
-  const isOwner = Boolean(
-    authUser?.user?.id && authUser.user.id === session.userId
-  );
+  const userId = authUser?.user?.id;
+  const isCreator = isSessionCreator(userId, session);
+  const hasTeamAccess = await canViewSession(userId, session);
 
-  if (!isOwner) {
+  if (!isCreator && !hasTeamAccess) {
     if (isShareExpired(session.shareExpiresAt)) {
       return NextResponse.json(
         { success: false as const, error: "This link has expired." },

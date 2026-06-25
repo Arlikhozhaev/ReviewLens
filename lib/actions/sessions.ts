@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAuthUser } from "@/lib/auth-helpers";
+import { canDeleteSession } from "@/lib/org/access";
 import { createLogger } from "@/lib/logger";
 
 export async function deleteSession(
@@ -22,14 +23,15 @@ export async function deleteSession(
   try {
     const session = await prisma.analysisSession.findUnique({
       where: { id: sessionId },
-      select: { userId: true },
+      select: { userId: true, organizationId: true },
     });
 
     if (!session) {
       return { error: "Session not found" };
     }
 
-    if (session.userId !== authUser.userId) {
+    const allowed = await canDeleteSession(authUser.userId, session);
+    if (!allowed) {
       log.warn("Forbidden delete attempt");
       return { error: "Forbidden" };
     }
