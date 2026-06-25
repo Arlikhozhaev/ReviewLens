@@ -5,12 +5,12 @@ const SECURITY_POINTS = [
   {
     icon: Database,
     title: "Your data, isolated per analysis",
-    body: "Reviews are stored in a private PostgreSQL database and tied to a single analysis session. There's no shared pool of data across users.",
+    body: "Reviews are stored in a private PostgreSQL database, scoped to your account per analysis. There's no shared pool of data across users.",
   },
   {
     icon: Eye,
-    title: "No account, no tracking",
-    body: "You don't create an account to run an analysis. A shared report link works for anyone who has it — nothing is indexed or made publicly searchable.",
+    title: "Your account, your analyses",
+    body: "Sign in with a magic link — no password. Analyses are scoped to your account. Share report links only with people you choose.",
   },
   {
     icon: Server,

@@ -1,17 +1,19 @@
 import { openai } from "@/lib/openai";
 import { OPENAI_MODELS } from "@/lib/constants";
 import { sleep } from "@/lib/utils";
+import type { createLogger } from "@/lib/logger";
 import type { SentimentBreakdown } from "@/types";
 import type { ThemeAnalysis } from "../types";
 import type { Cluster } from "../types";
 import { getRepresentativeTexts } from "./clustering";
 
-// ── Theme summarization ───────────────────────────────────────────────────────
+type Logger = ReturnType<typeof createLogger>;
 
 export async function summarizeCluster(
   cluster: Cluster,
-  totalReviews: number
-): Promise<ThemeAnalysis> {
+  totalReviews: number,
+  log: Logger
+): Promise<{ theme: ThemeAnalysis; tokensUsed: number }> {
   const representatives = getRepresentativeTexts(cluster, 5);
 
   const reviewList = representatives
@@ -43,6 +45,13 @@ Choose sentiment based on whether these reviews are primarily positive, negative
         response_format: { type: "json_object" },
       });
 
+      const tokensUsed = response.usage?.total_tokens ?? 0;
+      log.openaiUsage("summarization.cluster", {
+        total: tokensUsed,
+        prompt: response.usage?.prompt_tokens,
+        completion: response.usage?.completion_tokens,
+      }, { clusterId: cluster.id });
+
       const content = response.choices[0]?.message?.content ?? "{}";
 
       let parsed: {
@@ -60,44 +69,49 @@ Choose sentiment based on whether these reviews are primarily positive, negative
       const percentage = (cluster.texts.length / totalReviews) * 100;
 
       return {
-        clusterId: cluster.id,
-        label: parsed.label ?? `Theme ${cluster.id + 1}`,
-        description: parsed.description ?? "Customer feedback group",
-        sentiment: parsed.sentiment ?? "neutral",
-        reviewCount: cluster.texts.length,
-        percentage,
-        exampleQuotes: representatives.slice(0, 3),
+        theme: {
+          clusterId: cluster.id,
+          label: parsed.label ?? `Theme ${cluster.id + 1}`,
+          description: parsed.description ?? "Customer feedback group",
+          sentiment: parsed.sentiment ?? "neutral",
+          reviewCount: cluster.texts.length,
+          percentage,
+          exampleQuotes: representatives.slice(0, 3),
+        },
+        tokensUsed,
       };
     } catch (error: unknown) {
       attempt++;
       if (attempt >= 3) {
-        // Fallback: return a generic theme instead of crashing the pipeline
-        console.error(`[summarization] Cluster ${cluster.id} failed:`, error);
+        log.error(`Cluster ${cluster.id} summarization failed`, {
+          error: String(error),
+        });
         return {
-          clusterId: cluster.id,
-          label: `Theme ${cluster.id + 1}`,
-          description: "A group of similar customer reviews",
-          sentiment: "neutral",
-          reviewCount: cluster.texts.length,
-          percentage: (cluster.texts.length / totalReviews) * 100,
-          exampleQuotes: representatives.slice(0, 3),
+          theme: {
+            clusterId: cluster.id,
+            label: `Theme ${cluster.id + 1}`,
+            description: "A group of similar customer reviews",
+            sentiment: "neutral",
+            reviewCount: cluster.texts.length,
+            percentage: (cluster.texts.length / totalReviews) * 100,
+            exampleQuotes: representatives.slice(0, 3),
+          },
+          tokensUsed: 0,
         };
       }
       await sleep(1_000 * attempt);
     }
   }
 
-  // TypeScript requires a return here — unreachable in practice
   throw new Error(`summarizeCluster exhausted retries for cluster ${cluster.id}`);
 }
-
-// ── Executive summary ─────────────────────────────────────────────────────────
 
 export async function generateExecutiveSummary(
   themes: ThemeAnalysis[],
   totalReviews: number,
-  averageRating?: number
-): Promise<string> {
+  averageRating: number | undefined,
+  log: Logger
+): Promise<{ summary: string; tokensUsed: number }> {
   const sorted = [...themes].sort((a, b) => b.reviewCount - a.reviewCount);
 
   const themeList = sorted
@@ -127,17 +141,27 @@ Write for a product manager who will use this to make decisions.`;
       max_tokens: 200,
     });
 
-    return (
-      response.choices[0]?.message?.content?.trim() ??
-      "Analysis complete. See themes below for details."
-    );
+    const tokensUsed = response.usage?.total_tokens ?? 0;
+    log.openaiUsage("summarization.executive", {
+      total: tokensUsed,
+      prompt: response.usage?.prompt_tokens,
+      completion: response.usage?.completion_tokens,
+    });
+
+    return {
+      summary:
+        response.choices[0]?.message?.content?.trim() ??
+        "Analysis complete. See themes below for details.",
+      tokensUsed,
+    };
   } catch (error) {
-    console.error("[summarization] Executive summary failed:", error);
-    return "Analysis complete. See themes below for detailed insights.";
+    log.error("Executive summary failed", { error: String(error) });
+    return {
+      summary: "Analysis complete. See themes below for detailed insights.",
+      tokensUsed: 0,
+    };
   }
 }
-
-// ── Sentiment breakdown ───────────────────────────────────────────────────────
 
 export function computeSentimentBreakdown(
   themes: ThemeAnalysis[]

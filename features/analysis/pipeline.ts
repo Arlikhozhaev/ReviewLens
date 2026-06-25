@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { createLogger } from "@/lib/logger";
 import { generateEmbeddings } from "./utils/embeddings";
 import { clusterReviews, determineK } from "./utils/clustering";
 import {
@@ -8,13 +9,27 @@ import {
   computeSentimentBreakdown,
 } from "./utils/summarization";
 
-export async function runAnalysisPipeline(sessionId: string): Promise<void> {
-  const startTime = Date.now();
+export interface PipelineOptions {
+  requestId?: string;
+}
 
-  console.log(`[pipeline] Starting for session ${sessionId}`);
+export async function runAnalysisPipeline(
+  sessionId: string,
+  options: PipelineOptions = {}
+): Promise<void> {
+  const startTime = Date.now();
+  const log = createLogger({
+    sessionId,
+    requestId: options.requestId,
+    component: "pipeline",
+  });
+
+  log.info("Pipeline started");
+
+  let totalOpenAiTokens = 0;
 
   try {
-    // ── Load reviews from DB ──────────────────────────────────────────────────
+    const stageLoadStart = Date.now();
     const dbReviews = await prisma.review.findMany({
       where: { sessionId },
       select: { id: true, text: true, rating: true },
@@ -24,26 +39,45 @@ export async function runAnalysisPipeline(sessionId: string): Promise<void> {
       throw new Error("No reviews found in session");
     }
 
-    console.log(`[pipeline] Loaded ${dbReviews.length} reviews`);
+    log.stage("load_reviews", Date.now() - stageLoadStart, {
+      reviewCount: dbReviews.length,
+    });
 
-    // ── Stage 1: Embeddings ───────────────────────────────────────────────────
-    const embedded = await generateEmbeddings(
-      dbReviews.map((r) => ({ id: r.id, text: r.text }))
-    );
+    const embedStart = Date.now();
+    const { reviews: embedded, totalTokens: embedTokens } =
+      await generateEmbeddings(
+        dbReviews.map((r) => ({ id: r.id, text: r.text })),
+        log
+      );
+    totalOpenAiTokens += embedTokens;
+    log.stage("embeddings", Date.now() - embedStart, {
+      reviewCount: embedded.length,
+      totalTokens: embedTokens,
+    });
 
-    // ── Stage 2: Clustering ───────────────────────────────────────────────────
+    const clusterStart = Date.now();
     const k = determineK(embedded.length);
-    console.log(`[pipeline] Clustering ${embedded.length} reviews into ${k} groups`);
-
     const clusters = clusterReviews(embedded, k);
-    console.log(`[pipeline] Got ${clusters.length} non-empty clusters`);
+    log.stage("clustering", Date.now() - clusterStart, {
+      clusterCount: clusters.length,
+      k,
+    });
 
-    // ── Stage 3: Summarize each cluster ───────────────────────────────────────
-    const themes = await Promise.all(
-      clusters.map((cluster) => summarizeCluster(cluster, embedded.length))
+    const summarizeStart = Date.now();
+    const themeResults = await Promise.all(
+      clusters.map((cluster) =>
+        summarizeCluster(cluster, embedded.length, log)
+      )
     );
+    const themes = themeResults.map((t) => t.theme);
+    totalOpenAiTokens += themeResults.reduce(
+      (sum, t) => sum + t.tokensUsed,
+      0
+    );
+    log.stage("theme_summaries", Date.now() - summarizeStart, {
+      themeCount: themes.length,
+    });
 
-    // ── Stage 4: Executive summary ────────────────────────────────────────────
     const ratings = dbReviews
       .map((r) => r.rating)
       .filter((r): r is number => r !== null && r !== undefined);
@@ -53,21 +87,15 @@ export async function runAnalysisPipeline(sessionId: string): Promise<void> {
         ? ratings.reduce((a, b) => a + b, 0) / ratings.length
         : undefined;
 
-    const executiveSummary = await generateExecutiveSummary(
-      themes,
-      embedded.length,
-      averageRating
-    );
+    const execStart = Date.now();
+    const { summary: executiveSummary, tokensUsed: execTokens } =
+      await generateExecutiveSummary(themes, embedded.length, averageRating, log);
+    totalOpenAiTokens += execTokens;
+    log.stage("executive_summary", Date.now() - execStart);
 
     const sentimentBreakdown = computeSentimentBreakdown(themes);
     const processingMs = Date.now() - startTime;
 
-    // ── Stage 5: Persist result ───────────────────────────────────────────────
-    // sessionId is @unique on AnalysisResult. If a second pipeline run ever
-    // reaches this point after another one already succeeded — despite the
-    // atomic claim above, e.g. from a manual re-trigger — this insert throws
-    // P2002. That's not a real failure, it means the work is already done,
-    // so we exit cleanly instead of falling through to the catch block.
     try {
       await prisma.analysisResult.create({
         data: {
@@ -84,17 +112,12 @@ export async function runAnalysisPipeline(sessionId: string): Promise<void> {
         createError instanceof Prisma.PrismaClientKnownRequestError &&
         createError.code === "P2002"
       ) {
-        console.warn(
-          `[pipeline] Result already exists for session ${sessionId} — duplicate run, exiting cleanly`
-        );
+        log.warn("Result already exists — duplicate run, exiting cleanly");
         return;
       }
       throw createError;
     }
 
-    // One updateMany per cluster (max 8 queries) instead of one per review —
-    // looping per-review on a 500-row upload would open hundreds of parallel
-    // connections and exhaust Supabase's pooler.
     await Promise.all(
       clusters.map((cluster) =>
         prisma.review.updateMany({
@@ -104,26 +127,28 @@ export async function runAnalysisPipeline(sessionId: string): Promise<void> {
       )
     );
 
-    // ── Mark as completed ─────────────────────────────────────────────────────
     await prisma.analysisSession.update({
       where: { id: sessionId },
       data: { status: "COMPLETED" },
     });
 
-    console.log(`[pipeline] Completed in ${processingMs}ms`);
+    log.info("Pipeline completed", {
+      processingMs,
+      totalOpenAiTokens,
+      themeCount: themes.length,
+      reviewCount: embedded.length,
+    });
   } catch (error) {
-    console.error("[pipeline] Failed:", error);
+    log.error("Pipeline failed", { error: String(error) });
 
-    // Only downgrade to FAILED if the session isn't already COMPLETED.
-    // This is the second line of defense: even if two runs somehow both
-    // get this far, a failing one must never overwrite a status that a
-    // successful one already set.
     await prisma.analysisSession
       .updateMany({
         where: { id: sessionId, status: { not: "COMPLETED" } },
         data: { status: "FAILED" },
       })
-      .catch(console.error);
+      .catch((err: unknown) => {
+        log.error("Failed to mark session FAILED", { error: String(err) });
+      });
 
     throw error;
   }
