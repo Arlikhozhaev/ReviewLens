@@ -13,6 +13,7 @@ import {
   requireAuthUser,
   unauthorizedResponse,
 } from "@/lib/auth-helpers";
+import { getMembership } from "@/lib/org/access";
 import { createLogger } from "@/lib/logger";
 import type { ApiResponse } from "@/types";
 
@@ -74,14 +75,38 @@ export async function POST(
       );
     }
 
-    const { reviews, sourceType, sourceUrl, fileName } = parsed.data;
+    const { reviews, sourceType, sourceUrl, fileName, organizationId } =
+      parsed.data;
+
+    if (organizationId) {
+      const membership = await getMembership(authUser.userId, organizationId);
+      if (!membership) {
+        return NextResponse.json(
+          {
+            success: false as const,
+            error: "You are not a member of that workspace",
+            code: "FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    const prismaSourceType =
+      sourceType === "csv"
+        ? "CSV"
+        : sourceType === "paste"
+          ? "PASTE"
+          : "URL";
+
     const shareableSlug = generateShareableSlug();
 
     const session = await prisma.analysisSession.create({
       data: {
         shareableSlug,
         userId: authUser.userId,
-        sourceType: sourceType === "csv" ? "CSV" : "URL",
+        organizationId: organizationId ?? null,
+        sourceType: prismaSourceType,
         sourceUrl: sourceUrl ?? null,
         fileName: fileName ?? null,
         status: "PENDING",

@@ -5,6 +5,7 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth-helpers";
 import { createLogger } from "@/lib/logger";
+import { getMembership } from "@/lib/org/access";
 import type { ApiResponse } from "@/types";
 import type { SessionCardData } from "@/features/sessions";
 
@@ -14,7 +15,7 @@ export interface SessionsListResponse {
 
 const MAX_SESSIONS = 100;
 
-export async function GET(): Promise<
+export async function GET(request: Request): Promise<
   NextResponse<ApiResponse<SessionsListResponse>>
 > {
   const authUser = await requireAuthUser();
@@ -22,14 +23,43 @@ export async function GET(): Promise<
     return unauthorizedResponse();
   }
 
+  const { searchParams } = new URL(request.url);
+  const scope = searchParams.get("scope") ?? "personal";
+
   const log = createLogger({
     userId: authUser.userId,
     component: "sessions-api",
   });
 
   try {
+    let where: { userId?: string; organizationId?: string | null } = {
+      userId: authUser.userId,
+      organizationId: null,
+    };
+
+    if (scope !== "personal") {
+      const org = await prisma.organization.findUnique({
+        where: { slug: scope },
+        select: { id: true },
+      });
+      if (!org) {
+        return NextResponse.json(
+          { success: false as const, error: "Workspace not found" },
+          { status: 404 }
+        );
+      }
+      const membership = await getMembership(authUser.userId, org.id);
+      if (!membership) {
+        return NextResponse.json(
+          { success: false as const, error: "Forbidden" },
+          { status: 403 }
+        );
+      }
+      where = { organizationId: org.id };
+    }
+
     const raw = await prisma.analysisSession.findMany({
-      where: { userId: authUser.userId },
+      where,
       orderBy: { createdAt: "desc" },
       take: MAX_SESSIONS,
       select: {

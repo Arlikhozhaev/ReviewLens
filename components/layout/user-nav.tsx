@@ -48,6 +48,9 @@ export function UserNav() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
+          <Link href="/team">Team workspace</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/sessions">Your sessions</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

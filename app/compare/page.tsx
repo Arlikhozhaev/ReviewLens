@@ -24,8 +24,18 @@ async function loadSnapshot(
   userId: string,
   slug: string
 ): Promise<AnalysisSnapshot | null> {
+  const memberships = await prisma.organizationMember.findMany({
+    where: { userId },
+    select: { organizationId: true },
+  });
+  const orgIds = memberships.map((m) => m.organizationId);
+
   const session = await prisma.analysisSession.findFirst({
-    where: { shareableSlug: slug, userId, status: "COMPLETED" },
+    where: {
+      shareableSlug: slug,
+      status: "COMPLETED",
+      OR: [{ userId }, { organizationId: { in: orgIds } }],
+    },
     select: {
       shareableSlug: true,
       fileName: true,
@@ -62,8 +72,17 @@ export default async function ComparePage({ searchParams }: Props) {
   }
   const userId = authUser.user.id;
 
+  const memberships = await prisma.organizationMember.findMany({
+    where: { userId },
+    select: { organizationId: true },
+  });
+  const orgIds = memberships.map((m) => m.organizationId);
+
   const analyses = await prisma.analysisSession.findMany({
-    where: { userId, status: "COMPLETED" },
+    where: {
+      status: "COMPLETED",
+      OR: [{ userId }, { organizationId: { in: orgIds } }],
+    },
     orderBy: { createdAt: "desc" },
     select: {
       shareableSlug: true,

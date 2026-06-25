@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { FileText, Globe, Trash2, ExternalLink, Loader2, Star, ShieldAlert } from "lucide-react";
+import { FileText, Globe, ClipboardPaste, Trash2, ExternalLink, Loader2, Star, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatNumber } from "@/lib/utils";
 
@@ -96,7 +96,11 @@ export function SessionCard({ session, onDelete }: SessionCardProps) {
 
   const displayName =
     session.fileName ??
-    (session.sourceType === "URL" ? "URL Analysis" : "CSV Analysis");
+    (session.sourceType === "URL"
+      ? "URL Analysis"
+      : session.sourceType === "PASTE"
+        ? "Pasted reviews"
+        : "CSV Analysis");
 
   const isViewable = ["COMPLETED", "PROCESSING", "PENDING"].includes(
     session.status
@@ -130,6 +134,8 @@ export function SessionCard({ session, onDelete }: SessionCardProps) {
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/65 shadow-inner transition-colors group-hover:border-primary/20 group-hover:bg-primary/5">
           {session.sourceType === "URL" ? (
             <Globe className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden />
+          ) : session.sourceType === "PASTE" ? (
+            <ClipboardPaste className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden />
           ) : (
             <FileText className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden />
           )}
@@ -227,4 +233,4 @@ export function SessionCard({ session, onDelete }: SessionCardProps) {
       </div>
     </div>
   );
-}
+}

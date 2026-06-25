@@ -10,9 +10,12 @@ import {
 } from "@/lib/share-access";
 import { DashboardClient } from "./dashboard-client";
 import { ShareGate, ShareExpired } from "./share-gate";
-import type { StoredAnalysisResult } from "@/features/analysis/types";
+import type { StoredAnalysisResult, ThemeAnalysis } from "@/features/analysis/types";
 import type { SentimentBreakdown } from "@/types";
-import type { ThemeAnalysis } from "@/features/analysis/types";
+import {
+  canViewSession,
+  isSessionCreator,
+} from "@/lib/org/access";
 
 interface Props {
   params: { id: string };
@@ -57,6 +60,7 @@ export default async function DashboardPage({ params }: Props) {
     select: {
       id: true,
       userId: true,
+      organizationId: true,
       status: true,
       totalReviews: true,
       fileName: true,
@@ -79,11 +83,12 @@ export default async function DashboardPage({ params }: Props) {
   // Owner (the analysis creator) always has full access, bypassing
   // expiry and password gates set for shared viewers.
   const authUser = await auth();
-  const isOwner = Boolean(
-    authUser?.user?.id && authUser.user.id === session.userId
-  );
+  const userId = authUser?.user?.id;
+  const isCreator = isSessionCreator(userId, session);
+  const hasTeamAccess = await canViewSession(userId, session);
+  const isOwner = isCreator;
 
-  if (!isOwner) {
+  if (!isCreator && !hasTeamAccess) {
     if (isShareExpired(session.shareExpiresAt)) {
       return <ShareExpired />;
     }
