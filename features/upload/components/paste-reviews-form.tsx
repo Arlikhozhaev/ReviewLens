@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ClipboardPaste, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardPaste, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatNumber } from "@/lib/utils";
 import { MAX_REVIEWS_PER_ANALYSIS } from "@/lib/constants";
@@ -13,26 +13,19 @@ interface PasteReviewsFormProps {
   disabled?: boolean;
 }
 
-const PLACEHOLDER = `Paste reviews from Amazon, G2, App Store, or anywhere.
+const PLACEHOLDER = `Paste reviews here — one per paragraph, one per line, or CSV with a review column.
 
-One review per paragraph:
+Example:
 Great battery life on the new model.
 
-Slow shipping but product quality is fine.
+Slow shipping but the product quality is fine.
 
-Or one per line:
-Excellent support team
-Price feels too high
-Works as advertised
-
-Or paste CSV:
-review,rating
-"Love it",5
-"Broken on arrival",1`;
+5/5 - Support team was incredibly helpful.`;
 
 export function PasteReviewsForm({ onParsed, disabled }: PasteReviewsFormProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
 
   const charCount = text.length;
   const previewCount = useMemo(() => {
@@ -52,42 +45,61 @@ export function PasteReviewsForm({ onParsed, disabled }: PasteReviewsFormProps) 
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-        <p className="flex items-center gap-2 font-medium text-foreground">
-          <ClipboardPaste className="h-4 w-4 text-primary" />
-          Paste from any source
-        </p>
-        <p className="mt-1 text-xs leading-relaxed">
-          Copy reviews from a product page, spreadsheet, or doc. We accept paragraphs,
-          line-by-line lists, or CSV with a <code className="rounded bg-muted px-1">review</code> column.
-        </p>
-      </div>
-
-      <textarea
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          setError(null);
-        }}
-        placeholder={PLACEHOLDER}
-        disabled={disabled}
-        rows={14}
+      <div
         className={cn(
-          "w-full resize-y rounded-xl border border-input bg-background/80 px-4 py-3 text-sm shadow-sm",
-          "placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-          "disabled:cursor-not-allowed disabled:opacity-50"
+          "relative overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-300",
+          "surface-glass shadow-lg",
+          focused
+            ? "border-primary/50 bg-primary/[0.03] glow-ring"
+            : "border-border/85 bg-card/45 hover:border-primary/30 hover:bg-card/60",
+          disabled && "pointer-events-none opacity-60"
         )}
-      />
+      >
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2.5">
+          <ClipboardPaste className="h-4 w-4 text-primary" aria-hidden />
+          <span className="text-xs font-medium text-muted-foreground">
+            Accepts paragraphs, line lists, ratings like{" "}
+            <span className="font-mono text-[10px] text-foreground/80">5/5 - …</span>
+            , or CSV
+          </span>
+        </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>
-          {previewCount > 0
-            ? `~${formatNumber(previewCount)} review${previewCount === 1 ? "" : "s"} detected`
-            : "No reviews detected yet"}
-          {" · "}
-          max {formatNumber(MAX_REVIEWS_PER_ANALYSIS)} per analysis
-        </span>
-        <span>{formatNumber(charCount)} characters</span>
+        <textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setError(null);
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={PLACEHOLDER}
+          disabled={disabled}
+          rows={12}
+          className={cn(
+            "block w-full resize-none border-0 bg-transparent px-4 py-4 text-sm leading-relaxed",
+            "placeholder:text-muted-foreground/50 focus-visible:outline-none",
+            "min-h-[240px]"
+          )}
+        />
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+          <span>
+            {previewCount > 0 ? (
+              <>
+                <span className="font-semibold text-foreground">
+                  {formatNumber(previewCount)}
+                </span>{" "}
+                review{previewCount === 1 ? "" : "s"} detected
+              </>
+            ) : (
+              "Start typing or paste from clipboard"
+            )}
+          </span>
+          <span className="tabular-nums">
+            {formatNumber(charCount)} chars · max{" "}
+            {formatNumber(MAX_REVIEWS_PER_ANALYSIS)} reviews
+          </span>
+        </div>
       </div>
 
       {error && (
@@ -96,15 +108,19 @@ export function PasteReviewsForm({ onParsed, disabled }: PasteReviewsFormProps) 
         </p>
       )}
 
-      <Button
-        type="button"
-        className="w-full gap-2"
-        onClick={handleParse}
-        disabled={disabled || !text.trim()}
-      >
-        <Sparkles className="h-4 w-4" />
-        Parse pasted reviews
-      </Button>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          size="lg"
+          className="gap-2 px-6 shadow-md"
+          onClick={handleParse}
+          disabled={disabled || !text.trim()}
+        >
+          <Sparkles className="h-4 w-4" />
+          Continue to preview
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }

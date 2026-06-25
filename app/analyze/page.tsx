@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowRight,
-  ClipboardPaste,
   RotateCcw,
   Sparkles,
   Upload,
@@ -14,15 +13,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Navbar } from "@/components/layout/navbar";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import {
   DropZone,
+  ImportMethodSwitch,
   PasteReviewsForm,
   ReviewPreviewTable,
   UploadErrorList,
   useCsvParser,
+  type ImportMethod,
 } from "@/features/upload";
 import { apiFetch, apiPost } from "@/lib/api";
 import { MIN_REVIEWS_FOR_CLUSTERING } from "@/lib/constants";
@@ -30,15 +30,14 @@ import { consumePendingUpload } from "@/lib/pending-upload";
 import type { CreateAnalysisResponse } from "@/app/api/analysis/route";
 import type { OrgSummary } from "@/app/api/orgs/route";
 import type { CsvParseResult } from "@/features/upload/types";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 type Step = "upload" | "preview" | "submitting";
-type InputMode = "csv" | "paste";
 
 export default function AnalyzePage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("upload");
-  const [inputMode, setInputMode] = useState<InputMode>("csv");
+  const [inputMode, setInputMode] = useState<ImportMethod>("csv");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [sourceLabel, setSourceLabel] = useState<string>("");
   const [pasteResult, setPasteResult] = useState<CsvParseResult | null>(null);
@@ -80,14 +79,17 @@ export default function AnalyzePage() {
     [parse]
   );
 
-  const handlePasteParsed = useCallback((parsed: CsvParseResult, label: string) => {
-    setInputMode("paste");
-    setCurrentFile(null);
-    reset();
-    setPasteResult(parsed);
-    setSourceLabel(label);
-    setStep("preview");
-  }, [reset]);
+  const handlePasteParsed = useCallback(
+    (parsed: CsvParseResult, label: string) => {
+      setInputMode("paste");
+      setCurrentFile(null);
+      reset();
+      setPasteResult(parsed);
+      setSourceLabel(label);
+      setStep("preview");
+    },
+    [reset]
+  );
 
   const handleReset = useCallback(() => {
     reset();
@@ -128,9 +130,9 @@ export default function AnalyzePage() {
     result && result.validRows > 0 && result.validRows < MIN_REVIEWS_FOR_CLUSTERING;
 
   const stepsList = [
-    { id: "upload", label: inputMode === "paste" ? "Paste" : "Upload", icon: inputMode === "paste" ? ClipboardPaste : Upload },
-    { id: "preview", label: "Verify Data", icon: FileText },
-    { id: "submitting", label: "Extract Insights", icon: Sparkles },
+    { id: "upload", label: "Import", icon: Upload },
+    { id: "preview", label: "Verify", icon: FileText },
+    { id: "submitting", label: "Analyze", icon: Sparkles },
   ] as const;
 
   return (
@@ -138,8 +140,8 @@ export default function AnalyzePage() {
       <div className="hero-mesh pointer-events-none absolute inset-0 opacity-70" aria-hidden />
       <Navbar />
 
-      <main className="container relative flex flex-1 flex-col items-center py-12 px-4 md:py-16">
-        <div className="mb-10 w-full max-w-2xl text-center space-y-3">
+      <main className="container relative flex flex-1 flex-col items-center py-10 px-4 md:py-14">
+        <div className="mb-8 w-full max-w-2xl text-center space-y-3">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary animate-fade-up">
             <Sparkles className="h-3 w-3 fill-primary/10" />
             AI-powered theme clustering
@@ -148,11 +150,11 @@ export default function AnalyzePage() {
             Analyze your <span className="text-gradient">reviews</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground max-w-lg mx-auto">
-            Upload a CSV or paste reviews from any source — Amazon, G2, App Store, support tickets, and more.
+            Import from a CSV or paste text from Amazon, G2, App Store, or anywhere else.
           </p>
         </div>
 
-        <div className="mb-10 w-full max-w-md bg-card/40 border border-border/60 rounded-full px-4 py-2 shadow-xs backdrop-blur-md">
+        <div className="mb-8 w-full max-w-lg bg-card/40 border border-border/60 rounded-full px-4 py-2 shadow-xs backdrop-blur-md">
           <div className="flex items-center justify-between">
             {stepsList.map((s, index) => {
               const isCurrent = step === s.id;
@@ -195,7 +197,7 @@ export default function AnalyzePage() {
                   </div>
 
                   {index < stepsList.length - 1 && (
-                    <div className="h-[2px] w-8 sm:w-16 mx-2 bg-border relative -top-3 rounded">
+                    <div className="h-[2px] w-10 sm:w-14 mx-2 bg-border relative -top-3 rounded">
                       <div
                         className={cn(
                           "absolute inset-0 bg-primary transition-all duration-500 rounded",
@@ -213,50 +215,49 @@ export default function AnalyzePage() {
           </div>
         </div>
 
-        <div className="w-full max-w-2xl bg-card/60 border border-border/80 rounded-2xl p-6 md:p-8 shadow-xl backdrop-blur-xl animate-fade-up relative z-10">
+        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/80 bg-card/60 shadow-xl backdrop-blur-xl animate-fade-up relative z-10">
           <ErrorBoundary>
             {step === "upload" && (
-              <Tabs
-                value={inputMode}
-                onValueChange={(v) => setInputMode(v as InputMode)}
-                className="space-y-4"
-              >
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="csv" className="gap-1.5">
-                    <Upload className="h-3.5 w-3.5" />
-                    Upload CSV
-                  </TabsTrigger>
-                  <TabsTrigger value="paste" className="gap-1.5">
-                    <ClipboardPaste className="h-3.5 w-3.5" />
-                    Paste reviews
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="csv">
-                  <DropZone
-                    onFile={handleFile}
-                    isParsing={isParsing}
-                    error={error}
-                    onClearError={reset}
-                    currentFile={currentFile}
+              <>
+                <div className="border-b border-border/70 bg-muted/25 px-5 py-5 md:px-7">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Step 1 · Choose how to import
+                  </p>
+                  <ImportMethodSwitch
+                    value={inputMode}
+                    onChange={setInputMode}
+                    disabled={isParsing}
                   />
-                </TabsContent>
-                <TabsContent value="paste">
-                  <PasteReviewsForm onParsed={handlePasteParsed} />
-                </TabsContent>
-              </Tabs>
+                </div>
+
+                <div className="p-5 md:p-7">
+                  {inputMode === "csv" ? (
+                    <DropZone
+                      onFile={handleFile}
+                      isParsing={isParsing}
+                      error={error}
+                      onClearError={reset}
+                      currentFile={currentFile}
+                    />
+                  ) : (
+                    <PasteReviewsForm onParsed={handlePasteParsed} />
+                  )}
+                </div>
+              </>
             )}
 
             {step !== "upload" && result && (
-              <div className="space-y-6">
+              <div className="space-y-6 p-5 md:p-7">
                 <div className="flex items-center justify-between border-b border-border/80 pb-4">
                   <div>
-                    <h2 className="text-base font-bold text-foreground">
-                      {inputMode === "paste"
-                        ? "Reviews parsed successfully"
-                        : "File parsed successfully"}
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Step 2 · Verify
+                    </p>
+                    <h2 className="mt-1 text-base font-bold text-foreground">
+                      {formatNumber(result.validRows)} reviews ready
                     </h2>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Confirm details below before running analysis.
+                      {sourceLabel || (inputMode === "paste" ? "Pasted text" : "CSV file")}
                     </p>
                   </div>
                   <Button
@@ -268,23 +269,25 @@ export default function AnalyzePage() {
                     disabled={step === "submitting"}
                   >
                     <RotateCcw className="h-3 w-3" />
-                    Reset
+                    Start over
                   </Button>
                 </div>
 
                 {orgs.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="workspace">Save to</Label>
+                  <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/20 p-4">
+                    <Label htmlFor="workspace" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Save to workspace
+                    </Label>
                     <select
                       id="workspace"
                       value={workspaceId}
                       onChange={(e) => setWorkspaceId(e.target.value)}
                       className="flex h-9 w-full rounded-lg border border-input bg-background/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
-                      <option value="personal">Personal (only you)</option>
+                      <option value="personal">Personal — only you</option>
                       {orgs.map((org) => (
                         <option key={org.id} value={org.id}>
-                          Team · {org.name}
+                          {org.name} (team)
                         </option>
                       ))}
                     </select>
@@ -310,7 +313,7 @@ export default function AnalyzePage() {
                   </div>
                 )}
 
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-end border-t border-border/70 pt-5">
                   <Button
                     size="lg"
                     onClick={handleSubmit}

@@ -1,4 +1,6 @@
 export { DropZone } from "./components/drop-zone";
+export { ImportMethodSwitch } from "./components/import-method-switch";
+export type { ImportMethod } from "./components/import-method-switch";
 export { PasteReviewsForm } from "./components/paste-reviews-form";
 export { ReviewPreviewTable } from "./components/review-preview-table";
 export { UploadErrorList } from "./components/upload-error-list";
