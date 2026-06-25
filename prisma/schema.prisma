@@ -67,15 +67,17 @@ model VerificationToken {
 
 model AnalysisSession {
   id            String         @id @default(cuid())
-  shareableSlug String         @unique
-  userId        String?
-  sourceType    SourceType
-  sourceUrl     String?
-  fileName      String?
-  status        AnalysisStatus @default(PENDING)
-  totalReviews  Int            @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  shareableSlug     String         @unique
+  userId            String?
+  sourceType        SourceType
+  sourceUrl         String?
+  fileName          String?
+  status            AnalysisStatus @default(PENDING)
+  totalReviews      Int            @default(0)
+  sharePasswordHash String?
+  shareExpiresAt    DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   result  AnalysisResult?

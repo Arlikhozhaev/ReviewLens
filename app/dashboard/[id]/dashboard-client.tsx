@@ -33,6 +33,8 @@ import {
   SentimentChart,
   ThemeBarChart,
   ShareButton,
+  ExportMenu,
+  ShareSettingsDialog,
 } from "@/features/dashboard";
 import type { AnalysisStatusResponse } from "@/app/api/analysis/[id]/status/route";
 import type { ThemeAnalysis } from "@/features/analysis/types";
@@ -42,6 +44,11 @@ type AnalysisStatus = AnalysisStatusResponse["status"];
 
 interface DashboardClientProps {
   slug: string;
+  sessionId: string;
+  fileName: string | null;
+  isOwner: boolean;
+  hasSharePassword: boolean;
+  shareExpiresAt: string | null;
   initialStatus: AnalysisStatus;
   initialTotalReviews: number;
   initialResult: StoredAnalysisResult | null;
@@ -49,6 +56,11 @@ interface DashboardClientProps {
 
 export function DashboardClient({
   slug,
+  sessionId,
+  fileName,
+  isOwner,
+  hasSharePassword,
+  shareExpiresAt,
   initialStatus,
   initialTotalReviews,
   initialResult,
@@ -215,6 +227,11 @@ export function DashboardClient({
   return (
     <CompletedDashboard
       slug={slug}
+      sessionId={sessionId}
+      fileName={fileName}
+      isOwner={isOwner}
+      hasSharePassword={hasSharePassword}
+      shareExpiresAt={shareExpiresAt}
       totalReviews={totalReviews}
       result={result}
       onNewAnalysis={() => router.push("/analyze")}
@@ -242,12 +259,22 @@ function Shell({ children }: { children: React.ReactNode }) {
 type ThemeFilter = "all" | "negative" | "positive" | "other";
 
 function CompletedDashboard({
-  slug: _slug,
+  slug,
+  sessionId,
+  fileName,
+  isOwner,
+  hasSharePassword,
+  shareExpiresAt,
   totalReviews,
   result,
   onNewAnalysis,
 }: {
   slug: string;
+  sessionId: string;
+  fileName: string | null;
+  isOwner: boolean;
+  hasSharePassword: boolean;
+  shareExpiresAt: string | null;
   totalReviews: number;
   result: StoredAnalysisResult;
   onNewAnalysis: () => void;
@@ -300,7 +327,22 @@ function CompletedDashboard({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ShareButton />
+          <ExportMenu
+            slug={slug}
+            fileName={fileName}
+            totalReviews={totalReviews}
+            result={result}
+          />
+          {isOwner ? (
+            <ShareSettingsDialog
+              sessionId={sessionId}
+              slug={slug}
+              hasSharePassword={hasSharePassword}
+              shareExpiresAt={shareExpiresAt}
+            />
+          ) : (
+            <ShareButton />
+          )}
           <Button
             variant="outline"
             size="sm"

@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import {
+  isShareExpired,
+  shareAccessCookieName,
+  verifyShareAccessToken,
+} from "@/lib/share-access";
 import { DashboardClient } from "./dashboard-client";
+import { ShareGate, ShareExpired } from "./share-gate";
 import type { StoredAnalysisResult } from "@/features/analysis/types";
 import type { SentimentBreakdown } from "@/types";
 import type { ThemeAnalysis } from "@/features/analysis/types";
@@ -47,8 +55,13 @@ export default async function DashboardPage({ params }: Props) {
   const session = await prisma.analysisSession.findUnique({
     where: { shareableSlug: params.id },
     select: {
+      id: true,
+      userId: true,
       status: true,
       totalReviews: true,
+      fileName: true,
+      sharePasswordHash: true,
+      shareExpiresAt: true,
       result: {
         select: {
           executiveSummary: true,
@@ -62,6 +75,30 @@ export default async function DashboardPage({ params }: Props) {
   });
 
   if (!session) notFound();
+
+  // Owner (the analysis creator) always has full access, bypassing
+  // expiry and password gates set for shared viewers.
+  const authUser = await auth();
+  const isOwner = Boolean(
+    authUser?.user?.id && authUser.user.id === session.userId
+  );
+
+  if (!isOwner) {
+    if (isShareExpired(session.shareExpiresAt)) {
+      return <ShareExpired />;
+    }
+
+    if (session.sharePasswordHash) {
+      const cookieStore = cookies();
+      const token = cookieStore.get(
+        shareAccessCookieName(session.id)
+      )?.value;
+
+      if (!verifyShareAccessToken(token, session.id)) {
+        return <ShareGate slug={params.id} />;
+      }
+    }
+  }
 
   // Shape Prisma's Json columns into our typed result interface
   const initialResult: StoredAnalysisResult | null = session.result
@@ -78,6 +115,11 @@ export default async function DashboardPage({ params }: Props) {
   return (
     <DashboardClient
       slug={params.id}
+      sessionId={session.id}
+      fileName={session.fileName}
+      isOwner={isOwner}
+      hasSharePassword={Boolean(session.sharePasswordHash)}
+      shareExpiresAt={session.shareExpiresAt?.toISOString() ?? null}
       initialStatus={session.status}
       initialTotalReviews={session.totalReviews}
       initialResult={initialResult}
