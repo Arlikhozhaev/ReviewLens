@@ -1,15 +1,70 @@
 # ReviewLens
 
-Turn customer review CSVs into actionable product insights — themes, sentiment, and an executive summary — in under a minute.
+**Turn customer reviews into product decisions — in seconds.**
 
-## Stack
+ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (embeddings → clustering → summarization), and produces a structured insight report: top complaints, top praises, sentiment breakdown, and an executive summary. Every report gets a permanent shareable link with no login required to view it.
 
-- **Next.js 14** (App Router)
-- **PostgreSQL** via **Prisma** (Supabase-compatible pooling)
-- **OpenAI** — `text-embedding-3-small` + `gpt-4o-mini`
-- **Tailwind CSS** + shadcn/ui
+[Live demo](https://review-lens-ten.vercel.app/) · [Report an issue](mailto:arlikhozhaevca@gmail.com)
 
-## Quick start
+---
+
+## What it does
+
+1. **Upload** — Drop a CSV of reviews. Column names are detected automatically (`review`, `rating`, `author`, `date` in any format).
+2. **Embed** — Each review is converted into a 1536-dimensional vector using OpenAI's `text-embedding-3-small`.
+3. **Cluster** — k-means groups semantically similar reviews together. Reviews describing the same problem in different words end up in the same cluster.
+4. **Summarize** — `gpt-4o-mini` reads each cluster and writes a theme label, description, and sentiment tag. One final call produces the executive summary.
+5. **Report** — A dashboard shows sentiment breakdown, theme distribution chart, complaint and praise cards with example quotes, and a shareable URL.
+
+Analyzing 50 reviews takes under 10 seconds end to end.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 14 App Router (RSC + Server Actions) |
+| Language | TypeScript (strict mode) |
+| Styling | Tailwind CSS + shadcn/ui (Nova preset) |
+| Charts | Recharts |
+| Database | PostgreSQL via Supabase |
+| ORM | Prisma 6 |
+| AI | OpenAI `text-embedding-3-small` + `gpt-4o-mini` |
+| Validation | Zod |
+| Deployment | Vercel |
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 18+
+- A [Supabase](https://supabase.com) project (free tier works)
+- An [OpenAI](https://platform.openai.com) API key with a positive credit balance
+
+### Setup
+
+```bash
+git clone https://github.com/your-username/reviewlens.git
+cd reviewlens
+npm install
+```
+
+Copy the example env file and fill in your values:
+
+```bash
+cp .env.example .env.local
+```
+
+Push the database schema:
+
+```bash
+npx prisma migrate dev --name init
+```
+
+Start the dev server:
 
 ```bash
 cp .env.example .env.local
@@ -20,42 +75,95 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [localhost:3000](http://localhost:3000).
 
-## How it works
+### Environment variables
 
-1. **Upload** — CSV with a `review` column (optional: `rating`, `author`, `date`). Max 500 reviews / 10 MB.
-2. **Pipeline** — embeddings → k-means clustering → per-theme GPT summaries → executive summary.
-3. **Dashboard** — shareable report at `/dashboard/[slug]`.
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Supabase pooled connection string (Transaction mode, port 6543) |
+| `DIRECT_URL` | Supabase direct connection string (Session mode, port 5432) — required for migrations |
+| `OPENAI_API_KEY` | OpenAI secret key (`sk-proj-...`) |
+| `NEXT_PUBLIC_APP_URL` | Public URL of the deployment (`http://localhost:3000` in dev) |
 
-Typical processing time: **15–45 seconds** for 100–500 reviews (depends on OpenAI latency).
+See `.env.example` for the exact format.
 
-## API
+---
 
-| Route | Description |
-|-------|-------------|
-| `POST /api/analysis` | Create session + bulk insert reviews |
-| `POST /api/analysis/[slug]/process` | Start pipeline (atomic claim) |
-| `GET /api/analysis/[slug]/status` | Poll status + result |
-| `GET /api/sessions?slugs=…` | List sessions by shareable slug (browser history) |
-| `GET /api/health` | DB connectivity check |
+## Project structure
+
+```
+reviewlens/
+├── app/
+│   ├── api/analysis/          # Route handlers: create session, trigger pipeline, poll status
+│   ├── analyze/               # Upload page
+│   ├── dashboard/[id]/        # Analysis results (server-rendered, no loading flicker)
+│   └── sessions/              # Analysis history with optimistic delete
+├── features/
+│   ├── upload/                # CSV parsing, column detection, drop zone
+│   ├── analysis/              # AI pipeline: embeddings, clustering, summarization
+│   └── dashboard/             # Charts and theme components
+├── lib/
+│   ├── validations/           # Zod schemas for all API inputs
+│   ├── env.ts                 # Validated env — throws at startup if misconfigured
+│   ├── prisma.ts              # Singleton client
+│   └── api.ts                 # Typed fetch wrapper (ApiResponse<T> discriminated union)
+├── types/index.ts             # Global TypeScript types
+└── prisma/schema.prisma
+```
+
+---
+
+## AI pipeline
+
+```
+Reviews (DB)
+    │
+    ▼
+Embeddings         text-embedding-3-small · batches of 100 · retry on 429
+    │
+    ▼
+k-means clustering k = max(2, min(8, round(n / 15))) · k-means++ init
+    │
+    ▼
+Theme summarization gpt-4o-mini · one call per cluster (parallel) · JSON mode
+    │
+    ▼
+Executive summary  gpt-4o-mini · one call across all themes
+    │
+    ▼
+Persist            AnalysisResult (JSON columns) · AnalysisSession → COMPLETED
+```
+
+The pipeline is triggered from the dashboard via `POST /api/analysis/[slug]/process`. The route atomically claims the session using `updateMany WHERE status = PENDING` before starting — preventing duplicate runs from React Strict Mode's double-invocation or concurrent requests.
+
+---
 
 ## Scripts
 
 ```bash
-npm run dev          # Development server
+npm run dev          # Start development server
 npm run build        # Production build
-npm run type-check   # TypeScript
+npm run type-check   # tsc --noEmit
 npm run lint         # ESLint
+npm run format       # Prettier
 ```
 
-## Production notes
+---
 
-- Pipeline uses `@vercel/functions` `waitUntil` so analysis completes after the HTTP response on Vercel.
-- Rate limits: 20 uploads / hour / IP, 30 pipeline starts / hour / IP (in-memory; use Redis for strict multi-instance limits).
-- Sessions page shows analyses **tracked in this browser** only — share links work globally without login.
-- Stuck `PROCESSING` sessions auto-recover after 10 minutes.
+## Deployment
 
-## Environment
+The app deploys to Vercel without configuration beyond environment variables.
 
-See `.env.example` for required variables.
+1. Push to GitHub
+2. Import the repo in Vercel
+3. Add the four environment variables from the table above
+4. Deploy
+
+Connection pooling is handled by Supabase's pgbouncer. The `?pgbouncer=true` flag on `DATABASE_URL` is required — Prisma uses the `DIRECT_URL` for migrations only.
+
+---
+
+## License
+
+MIT
