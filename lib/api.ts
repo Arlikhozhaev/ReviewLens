@@ -11,6 +11,30 @@ export class ApiError extends Error {
   }
 }
 
+async function parseJsonResponse<T>(res: Response): Promise<ApiResponse<T>> {
+  const text = await res.text();
+
+  if (!text) {
+    throw new ApiError(
+      res.ok ? "Empty response from server" : `Request failed (${res.status})`,
+      undefined,
+      res.status
+    );
+  }
+
+  try {
+    return JSON.parse(text) as ApiResponse<T>;
+  } catch {
+    throw new ApiError(
+      res.ok
+        ? "Invalid response from server"
+        : `Request failed (${res.status})`,
+      undefined,
+      res.status
+    );
+  }
+}
+
 /**
  * Type-safe fetch wrapper for ReviewLens API routes.
  *
@@ -22,15 +46,21 @@ export async function apiFetch<T>(
   url: string,
   options?: RequestInit
 ): Promise<T> {
-  const res = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-    ...options,
-  });
+  let res: Response;
 
-  const json = (await res.json()) as ApiResponse<T>;
+  try {
+    res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+      ...options,
+    });
+  } catch {
+    throw new ApiError("Network error — check your connection.");
+  }
+
+  const json = await parseJsonResponse<T>(res);
 
   if (!json.success) {
     throw new ApiError(json.error, json.code, res.status);

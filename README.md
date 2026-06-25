@@ -67,6 +67,11 @@ npx prisma migrate dev --name init
 Start the dev server:
 
 ```bash
+cp .env.example .env.local
+# Set DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, NEXT_PUBLIC_APP_URL
+
+npm install
+npx prisma migrate deploy
 npm run dev
 ```
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { analyzeRequestSchema } from "@/lib/validations/review";
 import { generateShareableSlug } from "@/lib/utils";
+import { RATE_LIMITS } from "@/lib/constants";
+import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import type { ApiResponse } from "@/types";
 
 // Export the response type — client components import this for type safety
@@ -13,6 +15,29 @@ export interface CreateAnalysisResponse {
 export async function POST(
   request: Request
 ): Promise<NextResponse<ApiResponse<CreateAnalysisResponse>>> {
+  const ip = getClientIp(request);
+  const limited = rateLimit(
+    `create:${ip}`,
+    RATE_LIMITS.CREATE_ANALYSIS.limit,
+    RATE_LIMITS.CREATE_ANALYSIS.windowMs
+  );
+
+  if (!limited.ok) {
+    return NextResponse.json(
+      {
+        success: false as const,
+        error: `Upload limit reached. Try again in ${limited.retryAfterSec}s.`,
+        code: "RATE_LIMITED",
+      },
+      {
+        status: 429,
+        headers: limited.retryAfterSec
+          ? { "Retry-After": String(limited.retryAfterSec) }
+          : undefined,
+      }
+    );
+  }
+
   try {
     const body: unknown = await request.json();
     const parsed = analyzeRequestSchema.safeParse(body);

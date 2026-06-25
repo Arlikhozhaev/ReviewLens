@@ -5,9 +5,9 @@ const STEPS = [
   {
     n: "01",
     icon: FileUp,
-    title: "Upload or paste a link",
+    title: "Upload your CSV",
     description:
-      "Drop a CSV export of reviews, or paste a product URL. No setup, no integration, no waiting.",
+      "Drop a CSV export from Amazon, Shopify, App Store, or your own database. No setup or integration required.",
     accent: "from-blue-500/10 to-transparent",
   },
   {
