@@ -2,13 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthSessionProvider } from "@/components/providers/auth-session-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { APP_NAME, APP_URL } from "@/lib/constants";
 import "./globals.css";
 
 const OG_TITLE = `${APP_NAME} — Every review. One clear picture.`;
 const OG_DESCRIPTION =
-  "Upload customer reviews, get AI themes, sentiment breakdown & executive summary in under 60 seconds. Free — no account required.";
+  "Upload customer reviews, get AI themes, sentiment breakdown & executive summary in under 60 seconds.";
 
 export const metadata: Metadata = {
   title: {
@@ -60,10 +61,12 @@ export default function RootLayout({
       className={`${GeistSans.variable} ${GeistMono.variable}`}
     >
       <body className="min-h-screen bg-background font-sans antialiased">
-        <ThemeProvider>
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <AuthSessionProvider>
+          <ThemeProvider>
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

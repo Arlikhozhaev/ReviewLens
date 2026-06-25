@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  requireAuthUser,
+  unauthorizedResponse,
+} from "@/lib/auth-helpers";
+import { createLogger } from "@/lib/logger";
 import type { ApiResponse } from "@/types";
 import type { SessionCardData } from "@/features/sessions";
 
@@ -7,38 +12,26 @@ export interface SessionsListResponse {
   sessions: SessionCardData[];
 }
 
-const MAX_SLUGS = 50;
+const MAX_SESSIONS = 100;
 
-export async function GET(
-  request: Request
-): Promise<NextResponse<ApiResponse<SessionsListResponse>>> {
-  const { searchParams } = new URL(request.url);
-  const slugsParam = searchParams.get("slugs");
-
-  if (!slugsParam) {
-    return NextResponse.json({
-      success: true as const,
-      data: { sessions: [] },
-    });
+export async function GET(): Promise<
+  NextResponse<ApiResponse<SessionsListResponse>>
+> {
+  const authUser = await requireAuthUser();
+  if (!authUser) {
+    return unauthorizedResponse();
   }
 
-  const slugs = slugsParam
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, MAX_SLUGS);
-
-  if (slugs.length === 0) {
-    return NextResponse.json({
-      success: true as const,
-      data: { sessions: [] },
-    });
-  }
+  const log = createLogger({
+    userId: authUser.userId,
+    component: "sessions-api",
+  });
 
   try {
     const raw = await prisma.analysisSession.findMany({
-      where: { shareableSlug: { in: slugs } },
+      where: { userId: authUser.userId },
       orderBy: { createdAt: "desc" },
+      take: MAX_SESSIONS,
       select: {
         id: true,
         shareableSlug: true,
@@ -51,30 +44,25 @@ export async function GET(
       },
     });
 
-    const slugOrder = new Map(slugs.map((slug, i) => [slug, i]));
-    const sessions: SessionCardData[] = raw
-      .map((s) => ({
-        id: s.id,
-        shareableSlug: s.shareableSlug,
-        status: s.status,
-        totalReviews: s.totalReviews,
-        fileName: s.fileName,
-        sourceType: s.sourceType,
-        createdAt: s.createdAt.toISOString(),
-        averageRating: s.result?.averageRating ?? null,
-      }))
-      .sort(
-        (a, b) =>
-          (slugOrder.get(a.shareableSlug) ?? 999) -
-          (slugOrder.get(b.shareableSlug) ?? 999)
-      );
+    const sessions: SessionCardData[] = raw.map((s) => ({
+      id: s.id,
+      shareableSlug: s.shareableSlug,
+      status: s.status,
+      totalReviews: s.totalReviews,
+      fileName: s.fileName,
+      sourceType: s.sourceType,
+      createdAt: s.createdAt.toISOString(),
+      averageRating: s.result?.averageRating ?? null,
+    }));
+
+    log.info("Sessions listed", { count: sessions.length });
 
     return NextResponse.json({
       success: true as const,
       data: { sessions },
     });
   } catch (error) {
-    console.error("[GET /api/sessions]", error);
+    log.error("Failed to load sessions", { error: String(error) });
     return NextResponse.json(
       { success: false as const, error: "Failed to load sessions" },
       { status: 500 }

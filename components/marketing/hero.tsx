@@ -7,7 +7,7 @@ import { ReportPreview } from "@/components/marketing/report-preview";
 const HERO_STATS = [
   { value: "<60s", label: "Average analysis time" },
   { value: "500+", label: "Reviews per upload" },
-  { value: "0", label: "Accounts required" },
+  { value: "Magic link", label: "Sign in — no password" },
 ] as const;
 
 export function Hero() {

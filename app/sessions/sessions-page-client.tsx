@@ -10,8 +10,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SessionCard } from "@/features/sessions";
 import { deleteSession } from "@/lib/actions/sessions";
-import { apiFetch } from "@/lib/api";
-import { getTrackedSlugs, untrackSession } from "@/lib/session-history";
+import { apiFetch, ApiError } from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
 import type { SessionCardData } from "@/features/sessions";
 import type { SessionsListResponse } from "@/app/api/sessions/route";
@@ -50,19 +49,14 @@ export function SessionsPageClient() {
   const [loading, setLoading] = useState(true);
 
   const loadSessions = useCallback(async () => {
-    const slugs = getTrackedSlugs();
-    if (slugs.length === 0) {
-      setSessions([]);
-      setLoading(false);
-      return;
-    }
-
     try {
-      const data = await apiFetch<SessionsListResponse>(
-        `/api/sessions?slugs=${encodeURIComponent(slugs.join(","))}`
-      );
+      const data = await apiFetch<SessionsListResponse>("/api/sessions");
       setSessions(data.sessions);
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        window.location.href = "/login?callbackUrl=/sessions";
+        return;
+      }
       toast.error("Could not load your sessions.");
     } finally {
       setLoading(false);
@@ -73,16 +67,15 @@ export function SessionsPageClient() {
     void loadSessions();
   }, [loadSessions]);
 
-  async function handleDelete(sessionId: string, slug: string) {
+  async function handleDelete(sessionId: string) {
     const previous = sessions;
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    untrackSession(slug);
 
     const result = await deleteSession(sessionId);
 
     if (result.error) {
       setSessions(previous);
-      toast.error("Couldn't delete session. Please try again.");
+      toast.error(result.error);
     } else {
       toast.success("Session deleted");
     }
@@ -114,8 +107,8 @@ export function SessionsPageClient() {
               {loading
                 ? "Loading…"
                 : sessions.length === 0
-                  ? "Analyses from this browser appear here"
-                  : `${sessions.length} saved on this device · ${completedCount} completed`}
+                  ? "Your analyses appear here after you sign in and upload"
+                  : `${sessions.length} analyses · ${completedCount} completed`}
             </p>
           </div>
           <Button
@@ -139,7 +132,7 @@ export function SessionsPageClient() {
               label="Total analyses"
               value={formatNumber(sessions.length)}
               icon={<BarChart3 className="h-5 w-5" />}
-              description="Saved on this browser"
+              description="Linked to your account"
             />
             <StatCard
               label="Reviews processed"
@@ -167,7 +160,7 @@ export function SessionsPageClient() {
             <EmptyState
               icon={BarChart3}
               title="No analyses yet"
-              description="Upload a CSV to run your first analysis. Sessions are saved in this browser only — use the share link to access reports elsewhere."
+              description="Sign in and upload a CSV to run your first analysis. Reports stay linked to your account and remain shareable via link."
               action={
                 <Button size="sm" asChild className="shadow-md">
                   <Link href="/analyze">
@@ -184,7 +177,7 @@ export function SessionsPageClient() {
                 <SessionCard
                   key={session.id}
                   session={session}
-                  onDelete={(id) => handleDelete(id, session.shareableSlug)}
+                  onDelete={(id) => handleDelete(id)}
                 />
               ))}
             </div>

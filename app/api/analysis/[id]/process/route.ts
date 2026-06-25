@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
-import { runAnalysisPipeline } from "@/features/analysis";
 import { PIPELINE_STALE_MS, RATE_LIMITS } from "@/lib/constants";
-import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getClientIp,
+  rateLimitResponseHeaders,
+} from "@/lib/rate-limit";
+import { triggerAnalysisPipeline } from "@/lib/jobs/pipeline-trigger";
+import { createLogger } from "@/lib/logger";
+import { getRequestId } from "@/lib/auth-helpers";
 import type { ApiResponse } from "@/types";
 
 export const maxDuration = 60;
@@ -15,11 +20,13 @@ interface RouteContext {
 export async function POST(
   request: Request,
   { params }: RouteContext
-): Promise<NextResponse<ApiResponse<{ started: boolean }>>> {
+): Promise<NextResponse<ApiResponse<{ started: boolean; mode?: string }>>> {
+  const requestId = getRequestId(request);
+  const log = createLogger({ requestId, component: "process-route" });
   const { id: slug } = params;
 
   const ip = getClientIp(request);
-  const limited = rateLimit(
+  const limited = await checkRateLimit(
     `process:${ip}`,
     RATE_LIMITS.START_PIPELINE.limit,
     RATE_LIMITS.START_PIPELINE.windowMs
@@ -34,9 +41,7 @@ export async function POST(
       },
       {
         status: 429,
-        headers: limited.retryAfterSec
-          ? { "Retry-After": String(limited.retryAfterSec) }
-          : undefined,
+        headers: rateLimitResponseHeaders(limited),
       }
     );
   }
@@ -54,7 +59,6 @@ export async function POST(
       );
     }
 
-    // Recover sessions stuck in PROCESSING (e.g. serverless function killed mid-run)
     if (session.status === "PROCESSING") {
       const staleThreshold = new Date(Date.now() - PIPELINE_STALE_MS);
       if (session.updatedAt < staleThreshold) {
@@ -62,6 +66,7 @@ export async function POST(
           where: { id: session.id, status: "PROCESSING" },
           data: { status: "PENDING" },
         });
+        log.warn("Recovered stale PROCESSING session", { sessionId: session.id });
       }
     }
 
@@ -77,19 +82,17 @@ export async function POST(
       });
     }
 
-    const pipeline = runAnalysisPipeline(session.id).catch((error: unknown) => {
-      console.error("[process route] Pipeline threw unhandled error:", error);
+    const mode = await triggerAnalysisPipeline({
+      sessionId: session.id,
+      requestId,
     });
-
-    // Keep the pipeline alive after the HTTP response on Vercel serverless
-    waitUntil(pipeline);
 
     return NextResponse.json({
       success: true as const,
-      data: { started: true },
+      data: { started: true, mode },
     });
   } catch (error) {
-    console.error("[POST /api/analysis/[id]/process]", error);
+    log.error("Failed to start pipeline", { error: String(error) });
     return NextResponse.json(
       { success: false as const, error: "Failed to start pipeline" },
       { status: 500 }
