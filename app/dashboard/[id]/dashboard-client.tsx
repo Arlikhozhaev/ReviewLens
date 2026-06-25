@@ -8,6 +8,7 @@ import {
   Clock,
   Hash,
   Star,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,12 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Navbar } from "@/components/layout/navbar";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
-import { apiFetch, apiPost } from "@/lib/api";
+import { apiFetch, apiPost, ApiError } from "@/lib/api";
+import {
+  PIPELINE_UI_TIMEOUT_MS,
+  STATUS_POLL_INTERVAL_MS,
+} from "@/lib/constants";
+import { formatEstimateRange } from "@/lib/pipeline-estimate";
 import { cn, formatNumber, formatPercent, truncate } from "@/lib/utils";
 import {
   SentimentChart,
@@ -32,14 +38,14 @@ import type { AnalysisStatusResponse } from "@/app/api/analysis/[id]/status/rout
 import type { ThemeAnalysis } from "@/features/analysis/types";
 import type { StoredAnalysisResult } from "@/features/analysis/types";
 
+type AnalysisStatus = AnalysisStatusResponse["status"];
+
 interface DashboardClientProps {
   slug: string;
-  initialStatus: string;
+  initialStatus: AnalysisStatus;
   initialTotalReviews: number;
   initialResult: StoredAnalysisResult | null;
 }
-
-const POLL_INTERVAL_MS = 2_500;
 
 export function DashboardClient({
   slug,
@@ -49,80 +55,139 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const router = useRouter();
 
-  // Seed state from server-fetched initial data.
-  // COMPLETED analyses render immediately — zero client round-trips.
-  const [status, setStatus] = useState(initialStatus);
+  const [status, setStatus] = useState<AnalysisStatus>(initialStatus);
   const [totalReviews, setTotalReviews] = useState(initialTotalReviews);
   const [result, setResult] = useState<StoredAnalysisResult | null>(
     initialResult
   );
   const [pageError, setPageError] = useState<string | null>(null);
+  const [isSlow, setIsSlow] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const elapsedRef = useRef<NodeJS.Timeout | null>(null);
+  const startedAtRef = useRef<number>(Date.now());
 
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    if (elapsedRef.current) {
+      clearInterval(elapsedRef.current);
+      elapsedRef.current = null;
+    }
   }, []);
 
-  const fetchStatus = useCallback(async (): Promise<string> => {
+  const fetchStatus = useCallback(async (): Promise<AnalysisStatus> => {
+    const data = await apiFetch<AnalysisStatusResponse>(
+      `/api/analysis/${slug}/status`
+    );
+    setStatus(data.status);
+    setTotalReviews(data.totalReviews);
+    if (data.result) setResult(data.result);
+    if (data.isStale) setIsSlow(true);
+    return data.status;
+  }, [slug]);
+
+  const startPipeline = useCallback(async () => {
     try {
-      const data = await apiFetch<AnalysisStatusResponse>(
-        `/api/analysis/${slug}/status`
-      );
-      setStatus(data.status);
-      setTotalReviews(data.totalReviews);
-      if (data.result) setResult(data.result);
-      return data.status;
-    } catch {
-      setPageError("Could not reach the server. Check your connection.");
-      return "FAILED";
+      await apiPost(`/api/analysis/${slug}/process`, {});
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "RATE_LIMITED") {
+        setPageError(err.message);
+      }
+      // Non-fatal — pipeline may already be running
     }
   }, [slug]);
 
+  const retryAnalysis = useCallback(async () => {
+    setPageError(null);
+    setIsSlow(false);
+    startedAtRef.current = Date.now();
+    setElapsedSec(0);
+    await startPipeline();
+  }, [startPipeline]);
+
   useEffect(() => {
-    // If already completed from server data, do nothing
     if (initialStatus === "COMPLETED" || initialStatus === "FAILED") return;
 
-    async function init() {
-      let current = initialStatus;
+    elapsedRef.current = setInterval(() => {
+      const elapsed = Date.now() - startedAtRef.current;
+      setElapsedSec(Math.floor(elapsed / 1_000));
+      if (elapsed >= PIPELINE_UI_TIMEOUT_MS) setIsSlow(true);
+    }, 1_000);
 
-      if (current === "PENDING") {
-        try {
-          await apiPost(`/api/analysis/${slug}/process`, {});
-        } catch {
-          // Non-fatal — pipeline may already be starting
+    async function init() {
+      if (initialStatus === "PENDING" || initialStatus === "PROCESSING") {
+        await startPipeline();
+      }
+
+      try {
+        const current = await fetchStatus();
+        if (current === "COMPLETED" || current === "FAILED") {
+          stopPolling();
+          return;
         }
+      } catch (err) {
+        setPageError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not reach the server. Check your connection."
+        );
+        stopPolling();
+        return;
       }
 
       intervalRef.current = setInterval(async () => {
-        current = await fetchStatus();
-        if (current === "COMPLETED" || current === "FAILED") {
-          stopPolling();
+        try {
+          const current = await fetchStatus();
+          if (current === "COMPLETED" || current === "FAILED") {
+            stopPolling();
+          }
+        } catch {
+          // Transient poll failure — keep trying, don't mark as FAILED
         }
-      }, POLL_INTERVAL_MS);
+      }, STATUS_POLL_INTERVAL_MS);
     }
 
     void init();
     return () => stopPolling();
-  }, [slug, initialStatus, fetchStatus, stopPolling]);
+  }, [
+    slug,
+    initialStatus,
+    fetchStatus,
+    startPipeline,
+    stopPolling,
+  ]);
 
   if (pageError) {
     return (
       <Shell>
         <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-          <p className="text-sm text-destructive">{pageError}</p>
-          <Button variant="outline" onClick={() => router.push("/analyze")}>
-            Try again
-          </Button>
+          <p className="max-w-sm text-sm text-destructive">{pageError}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => void retryAnalysis()}>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Retry
+            </Button>
+            <Button variant="ghost" onClick={() => router.push("/analyze")}>
+              Upload again
+            </Button>
+          </div>
         </div>
       </Shell>
     );
   }
 
   if (status === "PENDING" || status === "PROCESSING") {
-    return <ProcessingScreen totalReviews={totalReviews} />;
+    return (
+      <ProcessingScreen
+        totalReviews={totalReviews}
+        elapsedSec={elapsedSec}
+        isSlow={isSlow}
+        onRetry={() => void retryAnalysis()}
+      />
+    );
   }
 
   if (status === "FAILED") {
@@ -134,7 +199,12 @@ export function DashboardClient({
             Something went wrong during AI processing. Check your OpenAI API
             key and billing, then try again.
           </p>
-          <Button onClick={() => router.push("/analyze")}>Upload again</Button>
+          <div className="flex gap-2">
+            <Button onClick={() => void retryAnalysis()}>Retry analysis</Button>
+            <Button variant="outline" onClick={() => router.push("/analyze")}>
+              Upload again
+            </Button>
+          </div>
         </div>
       </Shell>
     );
@@ -194,10 +264,13 @@ function CompletedDashboard({
   );
 
   const visible =
-    filter === "negative" ? complaints
-    : filter === "positive" ? praises
-    : filter === "other" ? other
-    : sorted;
+    filter === "negative"
+      ? complaints
+      : filter === "positive"
+        ? praises
+        : filter === "other"
+          ? other
+          : sorted;
 
   const filterOptions: { value: ThemeFilter; label: string; count: number }[] =
     [
@@ -213,7 +286,6 @@ function CompletedDashboard({
 
   return (
     <Shell>
-      {/* ── Header ────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
@@ -243,7 +315,6 @@ function CompletedDashboard({
 
       <Separator />
 
-      {/* ── Stat cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           icon={BarChart3}
@@ -280,7 +351,6 @@ function CompletedDashboard({
         )}
       </div>
 
-      {/* ── Executive summary ─────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -292,7 +362,6 @@ function CompletedDashboard({
         </CardContent>
       </Card>
 
-      {/* ── Charts ────────────────────────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
@@ -317,7 +386,6 @@ function CompletedDashboard({
         </Card>
       </div>
 
-      {/* ── Themes ────────────────────────────────────────────────────── */}
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">
@@ -369,10 +437,6 @@ function CompletedDashboard({
     </Shell>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
 
 function StatCard({
   icon: Icon,
@@ -476,26 +540,26 @@ function ThemeCard({ theme }: { theme: ThemeAnalysis }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Processing screen
-// ─────────────────────────────────────────────────────────────────────────────
+function ProcessingScreen({
+  totalReviews,
+  elapsedSec,
+  isSlow,
+  onRetry,
+}: {
+  totalReviews?: number;
+  elapsedSec: number;
+  isSlow: boolean;
+  onRetry: () => void;
+}) {
+  const estimate =
+    totalReviews && totalReviews > 0
+      ? formatEstimateRange(totalReviews)
+      : "15–45s";
 
-const PIPELINE_STEPS = [
-  "Generating embeddings",
-  "Clustering similar reviews",
-  "Summarizing themes",
-] as const;
-
-function ProcessingScreen({ totalReviews }: { totalReviews?: number }) {
-  const [stepIdx, setStepIdx] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(
-      () => setStepIdx((i) => Math.min(i + 1, PIPELINE_STEPS.length - 1)),
-      5_000
-    );
-    return () => clearInterval(t);
-  }, []);
+  const progress = Math.min(
+    92,
+    Math.round((elapsedSec / Math.max(parseInt(estimate.split("–")[1] ?? "45", 10), 1)) * 100)
+  );
 
   return (
     <Shell>
@@ -511,32 +575,35 @@ function ProcessingScreen({ totalReviews }: { totalReviews?: number }) {
               : "your reviews"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {PIPELINE_STEPS[stepIdx]}…
+            Reading every review, clustering themes, writing summaries…
           </p>
         </div>
-        <div className="w-full max-w-[260px] space-y-3">
-          <Progress
-            value={((stepIdx + 1) / PIPELINE_STEPS.length) * 80 + 8}
-            className="h-1.5"
-          />
-          <div className="flex justify-center gap-2">
-            {PIPELINE_STEPS.map((_, i) => (
-              <span
-                key={i}
-                className={cn(
-                  "inline-block h-1.5 w-1.5 rounded-full transition-colors duration-300",
-                  i < stepIdx
-                    ? "bg-emerald-500"
-                    : i === stepIdx
-                    ? "bg-primary"
-                    : "bg-muted-foreground/25"
-                )}
-              />
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Typically 10–30 seconds
+        <div className="w-full max-w-[300px] space-y-3">
+          <Progress value={progress} className="h-1.5" />
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {elapsedSec}s elapsed · usually {estimate}
           </p>
+          {isSlow && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left dark:border-amber-900 dark:bg-amber-950/20">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                Taking longer than usual
+              </p>
+              <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-400/80">
+                Large files or API load can slow things down. You can wait or
+                retry.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 h-8 text-xs"
+                onClick={onRetry}
+              >
+                <RefreshCw className="mr-1.5 h-3 w-3" />
+                Retry analysis
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </Shell>

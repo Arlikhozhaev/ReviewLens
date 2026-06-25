@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { PIPELINE_STALE_MS } from "@/lib/constants";
 import type { ApiResponse, SentimentBreakdown } from "@/types";
 import type { ThemeAnalysis, StoredAnalysisResult } from "@/features/analysis/types";
 
 export interface AnalysisStatusResponse {
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
   totalReviews: number;
+  isStale?: boolean;
   result?: StoredAnalysisResult;
 }
 
@@ -25,6 +27,7 @@ export async function GET(
       select: {
         status: true,
         totalReviews: true,
+        updatedAt: true,
         result: {
           select: {
             executiveSummary: true,
@@ -44,9 +47,14 @@ export async function GET(
       );
     }
 
+    const staleThreshold = new Date(Date.now() - PIPELINE_STALE_MS);
+    const isStale =
+      session.status === "PROCESSING" && session.updatedAt < staleThreshold;
+
     const payload: AnalysisStatusResponse = {
       status: session.status,
       totalReviews: session.totalReviews,
+      isStale,
     };
 
     if (session.status === "COMPLETED" && session.result) {
