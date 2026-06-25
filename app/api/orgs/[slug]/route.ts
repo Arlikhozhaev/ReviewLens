@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth-helpers";
 import { createLogger } from "@/lib/logger";
 import { getMembership, requireOrgRole } from "@/lib/org/access";
+import { getAppUrl, sendTeamInviteEmail } from "@/lib/email/team-invite";
 import type { ApiResponse } from "@/types";
 
 interface RouteContext {
@@ -87,7 +88,11 @@ const inviteSchema = z.object({
 export async function POST(
   request: Request,
   { params }: RouteContext
-): Promise<NextResponse<ApiResponse<{ inviteUrl: string }>>> {
+): Promise<
+  NextResponse<
+    ApiResponse<{ inviteUrl: string; emailSent: boolean }>
+  >
+> {
   const authUser = await requireAuthUser();
   if (!authUser) return unauthorizedResponse();
 
@@ -155,15 +160,29 @@ export async function POST(
       },
     });
 
-    const base =
-      process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const inviteUrl = `${base}/team/invite/${invite.token}`;
+    const inviteUrl = `${getAppUrl()}/team/invite/${invite.token}`;
 
-    log.info("Invite created", { orgId: org.id, email });
+    const orgMeta = await prisma.organization.findUnique({
+      where: { id: org.id },
+      select: { name: true },
+    });
+
+    const emailResult = await sendTeamInviteEmail({
+      to: email,
+      inviteUrl,
+      orgName: orgMeta?.name ?? "your team",
+      inviterName: authUser.session.user?.name ?? authUser.session.user?.email,
+    });
+
+    log.info("Invite created", {
+      orgId: org.id,
+      email,
+      emailSent: emailResult.emailSent,
+    });
 
     return NextResponse.json({
       success: true as const,
-      data: { inviteUrl },
+      data: { inviteUrl, emailSent: emailResult.emailSent },
     });
   } catch (error) {
     log.error("Invite failed", { error: String(error) });

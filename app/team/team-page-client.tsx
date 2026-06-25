@@ -50,6 +50,9 @@ export function TeamPageClient() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const [lastInviteEmailSent, setLastInviteEmailSent] = useState<boolean | null>(
+    null
+  );
 
   const loadOrgs = useCallback(async () => {
     const data = await apiFetch<{ orgs: OrgSummary[] }>("/api/orgs");
@@ -104,15 +107,24 @@ export function TeamPageClient() {
 
   async function handleInvite() {
     if (!selectedSlug || !inviteEmail.trim()) return;
+    const email = inviteEmail.trim();
     setInviting(true);
     try {
-      const data = await apiPost<{ inviteUrl: string }>(
+      const data = await apiPost<{ inviteUrl: string; emailSent: boolean }>(
         `/api/orgs/${selectedSlug}`,
-        { email: inviteEmail.trim(), role: "MEMBER" }
+        { email, role: "MEMBER" }
       );
       setLastInviteUrl(data.inviteUrl);
+      setLastInviteEmailSent(data.emailSent);
       setInviteEmail("");
-      toast.success("Invite link created");
+      if (data.emailSent) {
+        toast.success(`Invite email sent to ${email}`);
+      } else {
+        toast.message("Invite created — copy the link below", {
+          description:
+            "Email delivery is off in dev (no RESEND_API_KEY). Share the link manually.",
+        });
+      }
       await loadDetail(selectedSlug);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not invite member");
@@ -264,11 +276,22 @@ export function TeamPageClient() {
                   </div>
 
                   {canManage && (
-                    <div className="space-y-3 rounded-xl border border-dashed border-border bg-muted/30 p-4">
-                      <h3 className="text-sm font-semibold flex items-center gap-2">
-                        <Mail className="h-4 w-4" />
-                        Invite by email
-                      </h3>
+                    <div className="space-y-4 rounded-xl border border-dashed border-border bg-muted/30 p-4">
+                      <div>
+                        <h3 className="text-sm font-semibold flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          Invite a teammate
+                        </h3>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          We email them an invite link when Resend is configured
+                          (same as magic-link sign-in). In local dev without{" "}
+                          <code className="rounded bg-muted px-1">RESEND_API_KEY</code>
+                          , copy the link below and send it yourself — production
+                          links use your{" "}
+                          <code className="rounded bg-muted px-1">NEXT_PUBLIC_APP_URL</code>
+                          , not localhost.
+                        </p>
+                      </div>
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <Input
                           type="email"
@@ -279,21 +302,34 @@ export function TeamPageClient() {
                         <Button
                           onClick={() => void handleInvite()}
                           disabled={inviting || !inviteEmail.trim()}
-                          className="shrink-0"
+                          className="shrink-0 gap-2"
                         >
                           {inviting ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            "Send invite"
+                            <>
+                              <Mail className="h-4 w-4" />
+                              Send invite
+                            </>
                           )}
                         </Button>
                       </div>
                       {lastInviteUrl && (
-                        <div className="flex gap-2">
-                          <Input readOnly value={lastInviteUrl} className="text-xs" />
-                          <Button variant="outline" size="icon" onClick={() => void copyInvite()}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
+                        <div className="space-y-2 rounded-lg border border-border/70 bg-background/60 p-3">
+                          <p className="text-xs font-medium text-foreground">
+                            {lastInviteEmailSent
+                              ? "Email sent — backup link"
+                              : "Share this link with your teammate"}
+                          </p>
+                          <div className="flex gap-2">
+                            <Input readOnly value={lastInviteUrl} className="text-xs font-mono" />
+                            <Button variant="outline" size="icon" onClick={() => void copyInvite()} aria-label="Copy invite link">
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            They must sign in with the invited email address to accept.
+                          </p>
                         </div>
                       )}
                       {detail.pendingInvites.length > 0 && (
