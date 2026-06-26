@@ -4,7 +4,7 @@
 
 ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (embeddings → clustering → summarization), and produces a structured insight report: top complaints, top praises, sentiment breakdown, and an executive summary. Every report gets a shareable link.
 
-[Live demo](https://review-lens-ten.vercel.app/) · [Report an issue](mailto:arlikhozhaevca@gmail.com)
+[Live demo](https://review-lens-app.vercel.app/) · [Report an issue](mailto:arlikhozhaevca@gmail.com)
 
 ---
 
