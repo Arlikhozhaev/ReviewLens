@@ -6,6 +6,9 @@ ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (e
 
 [Live demo](https://review-lens-app.vercel.app/) · [Report an issue](mailto:arlikhozhaevca@gmail.com)
 
+
+![Portfolio Preview](/public/images/preview.png)
+
 ---
 
 ## What it does
