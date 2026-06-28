@@ -337,6 +337,7 @@ function CompletedDashboard({
             <ShareSettingsDialog
               sessionId={sessionId}
               slug={slug}
+              fileName={fileName}
               hasSharePassword={hasSharePassword}
               shareExpiresAt={shareExpiresAt}
             />

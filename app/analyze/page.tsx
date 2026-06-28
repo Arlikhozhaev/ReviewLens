@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowRight,
@@ -12,7 +12,6 @@ import {
   Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Navbar } from "@/components/layout/navbar";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import {
@@ -24,11 +23,11 @@ import {
   useCsvParser,
   type ImportMethod,
 } from "@/features/upload";
-import { apiFetch, apiPost } from "@/lib/api";
+import { fetchSampleReviewsFile } from "@/features/upload/utils/load-sample-csv";
+import { apiPost } from "@/lib/api";
 import { MIN_REVIEWS_FOR_CLUSTERING } from "@/lib/constants";
 import { consumePendingUpload } from "@/lib/pending-upload";
 import type { CreateAnalysisResponse } from "@/app/api/analysis/route";
-import type { OrgSummary } from "@/app/api/orgs/route";
 import type { CsvParseResult } from "@/features/upload/types";
 import { cn, formatNumber } from "@/lib/utils";
 
@@ -36,22 +35,16 @@ type Step = "upload" | "preview" | "submitting";
 
 export default function AnalyzePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const sampleLoadedRef = useRef(false);
   const [step, setStep] = useState<Step>("upload");
   const [inputMode, setInputMode] = useState<ImportMethod>("csv");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [sourceLabel, setSourceLabel] = useState<string>("");
   const [pasteResult, setPasteResult] = useState<CsvParseResult | null>(null);
-  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
-  const [workspaceId, setWorkspaceId] = useState<string>("personal");
 
   const { parse, result: csvResult, isParsing, error, reset } = useCsvParser();
   const result = inputMode === "csv" ? csvResult : pasteResult;
-
-  useEffect(() => {
-    void apiFetch<{ orgs: OrgSummary[] }>("/api/orgs")
-      .then((data) => setOrgs(data.orgs))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const pending = consumePendingUpload();
@@ -61,6 +54,22 @@ export default function AnalyzePage() {
       parse(pending);
     }
   }, [parse]);
+
+  useEffect(() => {
+    if (searchParams.get("sample") !== "1" || sampleLoadedRef.current) return;
+    sampleLoadedRef.current = true;
+    void (async () => {
+      try {
+        const file = await fetchSampleReviewsFile();
+        setInputMode("csv");
+        setCurrentFile(file);
+        setSourceLabel(file.name);
+        parse(file);
+      } catch {
+        toast.error("Could not load sample reviews.");
+      }
+    })();
+  }, [searchParams, parse]);
 
   useEffect(() => {
     if (result && result.validRows > 0 && step === "upload") {
@@ -110,8 +119,6 @@ export default function AnalyzePage() {
         reviews: result.reviews,
         sourceType: inputMode === "paste" ? "paste" : "csv",
         fileName: sourceLabel || currentFile?.name,
-        organizationId:
-          workspaceId !== "personal" ? workspaceId : undefined,
       });
 
       toast.dismiss(loadingToast);
@@ -124,7 +131,7 @@ export default function AnalyzePage() {
       );
       setStep("preview");
     }
-  }, [result, inputMode, sourceLabel, currentFile, workspaceId, router]);
+  }, [result, inputMode, sourceLabel, currentFile, router]);
 
   const showLowCountWarning =
     result && result.validRows > 0 && result.validRows < MIN_REVIEWS_FOR_CLUSTERING;
@@ -272,27 +279,6 @@ export default function AnalyzePage() {
                     Start over
                   </Button>
                 </div>
-
-                {orgs.length > 0 && (
-                  <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/20 p-4">
-                    <Label htmlFor="workspace" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Save to workspace
-                    </Label>
-                    <select
-                      id="workspace"
-                      value={workspaceId}
-                      onChange={(e) => setWorkspaceId(e.target.value)}
-                      className="flex h-9 w-full rounded-lg border border-input bg-background/80 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    >
-                      <option value="personal">Personal — only you</option>
-                      {orgs.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.name} (team)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
 
                 <ReviewPreviewTable result={result} />
 

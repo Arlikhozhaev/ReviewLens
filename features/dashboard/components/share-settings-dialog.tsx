@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Share2, Check, Copy, Loader2, Lock, Globe } from "lucide-react";
+import { Share2, Check, Copy, Loader2, Lock, Globe, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,10 +16,15 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateShareSettings } from "@/lib/actions/share";
+import {
+  buildDashboardShareUrl,
+  buildShareMailtoUrl,
+} from "@/lib/share/share-link";
 
 interface ShareSettingsDialogProps {
   sessionId: string;
   slug: string;
+  fileName?: string | null;
   hasSharePassword: boolean;
   shareExpiresAt: string | null;
 }
@@ -37,6 +42,7 @@ const EXPIRY_OPTIONS: { value: ExpiryChoice; label: string }[] = [
 export function ShareSettingsDialog({
   sessionId,
   slug,
+  fileName,
   hasSharePassword,
   shareExpiresAt,
 }: ShareSettingsDialogProps) {
@@ -49,17 +55,22 @@ export function ShareSettingsDialog({
 
   const shareUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/dashboard/${slug}`
+      ? buildDashboardShareUrl(window.location.origin, slug)
       : `/dashboard/${slug}`;
 
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
+      toast.success("Link copied — paste anywhere to share");
       setTimeout(() => setCopied(false), 2_000);
     } catch {
       toast.error("Could not copy link");
     }
+  }
+
+  function handleEmailViaClient() {
+    window.location.href = buildShareMailtoUrl(shareUrl, fileName);
   }
 
   async function applyUpdate(input: Parameters<typeof updateShareSettings>[0]) {
@@ -125,17 +136,17 @@ export function ShareSettingsDialog({
         <DialogHeader>
           <DialogTitle>Share report</DialogTitle>
           <DialogDescription>
-            Anyone with the link can view this report. Add a password or expiry
-            for sensitive data.
+            Stakeholders view this report in the browser — no account required.
+            Copy the link or open your email app. Optional password and expiry
+            for sensitive feedback.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* Link + copy */}
           <div className="space-y-2">
             <Label>Shareable link</Label>
             <div className="flex gap-2">
-              <Input readOnly value={shareUrl} className="text-xs" />
+              <Input readOnly value={shareUrl} className="text-xs font-mono" />
               <Button
                 type="button"
                 variant="outline"
@@ -150,9 +161,30 @@ export function ShareSettingsDialog({
                 )}
               </Button>
             </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => void handleCopy()}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copy link
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleEmailViaClient}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Email via your mail app
+              </Button>
+            </div>
           </div>
 
-          {/* Current status */}
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
               {hasSharePassword ? (
@@ -161,7 +193,7 @@ export function ShareSettingsDialog({
                 </>
               ) : (
                 <>
-                  <Globe className="h-3 w-3" /> Public
+                  <Globe className="h-3 w-3" /> Public link
                 </>
               )}
             </span>
@@ -172,7 +204,6 @@ export function ShareSettingsDialog({
             )}
           </div>
 
-          {/* Password */}
           <div className="space-y-2">
             <Label htmlFor="share-set-password">
               {hasSharePassword ? "Change password" : "Set a password"}
@@ -197,7 +228,6 @@ export function ShareSettingsDialog({
             )}
           </div>
 
-          {/* Expiry */}
           <div className="space-y-2">
             <Label htmlFor="share-expiry">Link expiry</Label>
             <select

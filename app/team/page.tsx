@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
-import { TeamPageClient } from "./team-page-client";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Team workspace",
-  description: "Shared analyses and team members",
-};
-
+/** Team workspaces are deferred; collaboration is share-link first. */
 export default function TeamPage() {
-  return <TeamPageClient />;
+  redirect("/sessions");
 }

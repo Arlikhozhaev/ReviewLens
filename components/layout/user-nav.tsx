@@ -18,7 +18,9 @@ export function UserNav() {
 
   if (status === "loading") {
     return (
-      <div className="size-8 shrink-0 rounded-lg bg-muted animate-pulse" aria-hidden />
+      <Button variant="ghost" size="sm" asChild className="text-sm">
+        <Link href="/login">Sign in</Link>
+      </Button>
     );
   }
 
@@ -47,9 +49,6 @@ export function UserNav() {
           <p className="text-sm font-medium truncate">{session.user.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/team">Team workspace</Link>
-        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/sessions">Your sessions</Link>
         </DropdownMenuItem>

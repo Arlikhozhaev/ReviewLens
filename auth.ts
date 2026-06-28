@@ -4,6 +4,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import authConfig from "@/auth.config";
 import { env, getEmailFrom } from "@/lib/env";
+import { sendResendEmail } from "@/lib/email/resend";
 
 async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
   if (!env.RESEND_API_KEY) {
@@ -13,17 +14,10 @@ async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
     return;
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: getEmailFrom(),
-      to: email,
-      subject: "Sign in to ReviewLens",
-      html: `
+  const result = await sendResendEmail({
+    to: email,
+    subject: "Sign in to ReviewLens",
+    html: `
         <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
           <h2 style="color: #111;">Sign in to ReviewLens</h2>
           <p style="color: #555; line-height: 1.5;">
@@ -35,13 +29,18 @@ async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
           <p style="color: #999; font-size: 12px;">If you didn't request this, ignore this email.</p>
         </div>
       `,
-    }),
   });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Failed to send magic link (${response.status}): ${body}`);
+  if (result.emailSent) return;
+
+  if (env.NODE_ENV === "development") {
+    console.log(
+      `\n[ReviewLens] Magic link for ${email} (email not sent — use this link):\n${url}\nFrom: ${getEmailFrom()}\nReason: ${result.emailError ?? "unknown"}\n`
+    );
+    return;
   }
+
+  throw new Error(result.emailError ?? "Failed to send sign-in email");
 }
 
 const emailProvider: Provider = {

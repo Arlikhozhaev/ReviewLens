@@ -1,6 +1,9 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { env } from "@/lib/env";
 import {
   requireAuthUser,
   unauthorizedResponse,
@@ -90,7 +93,11 @@ export async function POST(
   { params }: RouteContext
 ): Promise<
   NextResponse<
-    ApiResponse<{ inviteUrl: string; emailSent: boolean }>
+    ApiResponse<{
+      inviteUrl: string;
+      emailSent: boolean;
+      emailError?: string;
+    }>
   >
 > {
   const authUser = await requireAuthUser();
@@ -132,7 +139,10 @@ export async function POST(
 
     const email = parsed.data.email.toLowerCase();
     const existingMember = await prisma.organizationMember.findFirst({
-      where: { organizationId: org.id, user: { email } },
+      where: {
+        organizationId: org.id,
+        user: { email: { equals: email, mode: "insensitive" } },
+      },
     });
     if (existingMember) {
       return NextResponse.json(
@@ -142,23 +152,43 @@ export async function POST(
     }
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000);
-    const invite = await prisma.organizationInvite.upsert({
-      where: {
-        organizationId_email: { organizationId: org.id, email },
-      },
-      create: {
-        organizationId: org.id,
-        email,
-        role: parsed.data.role,
-        expiresAt,
-        invitedById: authUser.userId,
-      },
-      update: {
-        role: parsed.data.role,
-        expiresAt,
-        invitedById: authUser.userId,
-      },
-    });
+    let invite;
+    try {
+      invite = await prisma.organizationInvite.upsert({
+        where: {
+          organizationId_email: { organizationId: org.id, email },
+        },
+        create: {
+          organizationId: org.id,
+          email,
+          role: parsed.data.role,
+          expiresAt,
+          invitedById: authUser.userId,
+        },
+        update: {
+          role: parsed.data.role,
+          expiresAt,
+          invitedById: authUser.userId,
+          token: randomUUID(),
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2021" || error.code === "P2022")
+      ) {
+        log.error("Invite table missing", { error: error.message });
+        return NextResponse.json(
+          {
+            success: false as const,
+            error:
+              "Team invites are not set up on this database. Run prisma migrate deploy.",
+          },
+          { status: 503 }
+        );
+      }
+      throw error;
+    }
 
     const inviteUrl = `${getAppUrl()}/team/invite/${invite.token}`;
 
@@ -178,16 +208,30 @@ export async function POST(
       orgId: org.id,
       email,
       emailSent: emailResult.emailSent,
+      emailError: emailResult.emailError,
     });
 
     return NextResponse.json({
       success: true as const,
-      data: { inviteUrl, emailSent: emailResult.emailSent },
+      data: {
+        inviteUrl,
+        emailSent: emailResult.emailSent,
+        ...(emailResult.emailError
+          ? { emailError: emailResult.emailError }
+          : {}),
+      },
     });
   } catch (error) {
     log.error("Invite failed", { error: String(error) });
+    const detail =
+      env.NODE_ENV === "development" && error instanceof Error
+        ? error.message
+        : undefined;
     return NextResponse.json(
-      { success: false as const, error: "Failed to create invite" },
+      {
+        success: false as const,
+        error: detail ?? "Failed to create invite",
+      },
       { status: 500 }
     );
   }

@@ -1,10 +1,12 @@
 "use client";
 
-import { Upload, FileText, X, Download, FileSpreadsheet } from "lucide-react";
+import { Upload, FileText, X, Download, FileSpreadsheet, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { cn, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { useFileDrop } from "../hooks/use-file-drop";
+import { fetchSampleReviewsFile } from "../utils/load-sample-csv";
 
 interface DropZoneProps {
   onFile: (file: File) => void;
@@ -30,6 +32,15 @@ export function DropZone({
     fileInputRef,
     onFileInputChange,
   } = useFileDrop(onFile);
+
+  async function trySampleData() {
+    try {
+      const file = await fetchSampleReviewsFile();
+      onFile(file);
+    } catch {
+      toast.error("Could not load sample reviews. Try downloading a template CSV.");
+    }
+  }
 
   function downloadSampleCsv(type: "app" | "ecommerce") {
     const appReviews = [
@@ -215,7 +226,19 @@ export function DropZone({
           </div>
 
           <div className="flex flex-col items-center justify-center gap-2 pt-1">
-            <span className="text-xs text-muted-foreground font-medium">Need a test file? Try our templates:</span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 gap-1.5 shadow-sm"
+              onClick={() => void trySampleData()}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Try sample data
+            </Button>
+            <span className="text-xs text-muted-foreground font-medium">
+              Or download a template CSV
+            </span>
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -244,4 +267,4 @@ export function DropZone({
       )}
     </div>
   );
-}
+}

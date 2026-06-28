@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Play, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HeroDropZone } from "@/components/marketing/hero-drop-zone";
 import { ReportPreview } from "@/components/marketing/report-preview";
@@ -62,9 +62,9 @@ export function Hero() {
               asChild
               className="h-11 gap-2 bg-card/60 px-6 backdrop-blur-sm"
             >
-              <Link href="#demo">
-                <Play className="h-3.5 w-3.5 fill-current" />
-                Watch it work
+              <Link href="/analyze?sample=1">
+                <Sparkles className="h-3.5 w-3.5" />
+                Try sample data
               </Link>
             </Button>
           </div>

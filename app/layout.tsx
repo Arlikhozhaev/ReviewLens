@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthSessionProvider } from "@/components/providers/auth-session-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { auth } from "@/auth";
 import { APP_NAME, APP_URL } from "@/lib/constants";
 import "./globals.css";
 
@@ -49,11 +50,13 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+
   return (
     <html
       lang="en"
@@ -61,7 +64,7 @@ export default function RootLayout({
       className={`${GeistSans.variable} ${GeistMono.variable}`}
     >
       <body className="min-h-screen bg-background font-sans antialiased">
-        <AuthSessionProvider>
+        <AuthSessionProvider session={session}>
           <ThemeProvider>
             {children}
             <Toaster />

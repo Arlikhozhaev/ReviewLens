@@ -2,6 +2,10 @@ export const APP_NAME = "ReviewLens" as const;
 export const APP_TAGLINE = "Turn reviews into product insights" as const;
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+/** Bundled demo CSV for recruiters and first-time users. */
+export const SAMPLE_REVIEWS_CSV_PATH = "/samples/product-reviews.csv";
+export const SAMPLE_REVIEWS_FILENAME = "product-reviews-sample.csv";
+
 // ── CSV Upload ────────────────────────────────────────────────────────────────
 
 export const MAX_CSV_FILE_SIZE_MB = 10;

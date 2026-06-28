@@ -86,6 +86,20 @@ See `.env.example` for placeholder formats. Key variables:
 - Analyses are linked to `User.id`
 - Dashboard share links (`/dashboard/[slug]`) are viewable by anyone with the link, subject to optional share protection (below)
 
+## Collaboration model (design decision)
+
+**Share-link first, not team inboxes.**
+
+Stakeholders need **read-only access** to a report — not co-editing, not org membership, not transactional email infrastructure. ReviewLens optimizes for that:
+
+| Approach | Status | Why |
+|----------|--------|-----|
+| **Share link** (+ password / expiry) | Shipped | Works on Vercel’s default domain; copy link or `mailto:` — no Resend domain verification |
+| **Export PDF / CSV** | Shipped | Offline handoff to execs and clients |
+| **Team workspaces** | Schema + API only | Built for a multi-tenant SaaS path; UI deferred to avoid Resend/domain complexity in a portfolio demo |
+
+Org models (`Organization`, `OrganizationMember`, invites) remain in Prisma for extensibility and interview discussion, but the product surface is **personal sessions + shareable reports**. That is intentional scope control for a senior-level showcase: solve the user job (distribute insights), not every possible SaaS feature.
+
 ## Exporting reports
 
 The dashboard's **Export** menu produces stakeholder-ready outputs:
@@ -96,8 +110,10 @@ The dashboard's **Export** menu produces stakeholder-ready outputs:
 
 ## Share protection
 
-Owners can secure a shared report from the **Share** dialog:
+Owners share from the dashboard **Share** dialog:
 
+- **Copy link** — works on any Vercel URL; paste into Slack, Notion, or chat
+- **Email via your mail app** — opens a pre-filled `mailto:` draft (no API keys)
 - **Password** — scrypt-hashed; viewers unlock via a form that sets an HMAC-signed, httpOnly access cookie (12h)
 - **Expiry** — 1 / 7 / 30 days or never; expired links show a friendly notice
 - The owner (analysis creator) always bypasses both gates
@@ -108,7 +124,7 @@ Owners can secure a shared report from the **Share** dialog:
 
 | Service | Purpose | Required? |
 |---------|---------|-------------|
-| **Resend** | Magic link emails | Production |
+| **Resend** | Magic link sign-in (optional in dev — links print to terminal) | Optional locally |
 | **Upstash Redis** | Rate limits across instances | Production |
 | **Inngest** | Reliable background pipeline | Production |
 | **Sentry** | Error monitoring | Recommended |
@@ -216,6 +232,20 @@ The app deploys to Vercel. Add all environment variables from `.env.example` to 
 5. Redeploy
 
 Connection pooling is handled by Supabase's pgbouncer. The `?pgbouncer=true` flag on `DATABASE_URL` is required — Prisma uses the `DIRECT_URL` for migrations only.
+
+---
+
+## Interview talking points
+
+Use these when presenting ReviewLens in screens or on your resume:
+
+1. **Problem** — Product teams drown in unstructured review text; manual theming doesn’t scale.
+2. **Approach** — Embeddings + k-means clustering + LLM summarization, with atomic job claiming and share-gated read-only reports.
+3. **Tradeoff** — Built org/tenant models but shipped **share-link collaboration** instead of email invites (no custom domain on Vercel).
+4. **Reliability** — Inngest background jobs with `waitUntil` fallback, Upstash rate limits, health endpoint, 51+ unit tests + Playwright e2e, GitHub Actions CI.
+5. **Outcome** — Upload CSV → themed report in under 60s, export PDF/CSV, password-protected share links for stakeholders.
+
+**Live demo path:** Sign in → `/analyze` → **Try sample data** → wait for dashboard → **Share** → copy link.
 
 ---
 

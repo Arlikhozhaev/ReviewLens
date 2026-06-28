@@ -25,6 +25,8 @@ const envSchema = z.object({
   // Email magic links (Resend). Dev falls back to console logging.
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(3).optional(),
+  /** Resend account email — required for onboarding@resend.dev sandbox sends. */
+  RESEND_ACCOUNT_EMAIL: z.string().email().optional(),
 
   // Upstash Redis — optional; in-memory fallback in dev
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),

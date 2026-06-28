@@ -53,7 +53,7 @@ const FEATURES = [
     icon: Share2,
     title: "Share with one link",
     description:
-      "Send the full report to stakeholders. No account required for viewers.",
+      "Send read-only reports to PMs, founders, or clients — copy the link or open your mail app. Optional password and expiry. No custom domain required.",
     className: "md:col-span-2",
     highlight: false,
   },

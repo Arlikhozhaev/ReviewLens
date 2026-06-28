@@ -1,4 +1,5 @@
 import { env, getEmailFrom } from "@/lib/env";
+import { sendResendEmail } from "@/lib/email/resend";
 
 export function getAppUrl(): string {
   return env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
@@ -13,6 +14,8 @@ export interface SendTeamInviteEmailInput {
 
 export interface SendTeamInviteEmailResult {
   emailSent: boolean;
+  /** Set when email wasn't sent. Invite still exists. */
+  emailError?: string;
   /** When email wasn't sent (no Resend key), log this for dev. */
   devFallbackUrl?: string;
 }
@@ -33,17 +36,10 @@ export async function sendTeamInviteEmail(
     ? `<strong>${escapeHtml(inviterName)}</strong> invited you to join `
     : "You've been invited to join ";
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: getEmailFrom(),
-      to,
-      subject: `Join ${orgName} on ReviewLens`,
-      html: `
+  const result = await sendResendEmail({
+    to,
+    subject: `Join ${orgName} on ReviewLens`,
+    html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; color: #111;">
           <h2 style="font-size: 20px; margin-bottom: 8px;">Join ${escapeHtml(orgName)}</h2>
           <p style="color: #555; line-height: 1.6; font-size: 15px;">
@@ -57,15 +53,21 @@ export async function sendTeamInviteEmail(
           </p>
         </div>
       `,
-    }),
   });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Failed to send invite email (${response.status}): ${body}`);
+  if (result.emailSent) {
+    return { emailSent: true };
   }
 
-  return { emailSent: true };
+  console.log(
+    `\n[ReviewLens] Team invite for ${to} (email not sent — share manually):\n${inviteUrl}\nFrom: ${getEmailFrom()}\nReason: ${result.emailError ?? "unknown"}\n`
+  );
+
+  return {
+    emailSent: false,
+    emailError: result.emailError,
+    devFallbackUrl: inviteUrl,
+  };
 }
 
 function escapeHtml(value: string): string {
