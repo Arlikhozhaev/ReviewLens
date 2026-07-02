@@ -1,30 +1,75 @@
 # ReviewLens
 
-**Turn customer reviews into product decisions — in seconds.**
+**Turn customer reviews into product decisions — in under 60 seconds.**
 
-ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (embeddings → clustering → summarization), and produces a structured insight report: top complaints, top praises, sentiment breakdown, and an executive summary. Every report gets a shareable link.
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://review-lens-app.vercel.app/)
+[![CI](https://github.com/Arlikhozhaev/ReviewLens/actions/workflows/ci.yml/badge.svg)](https://github.com/Arlikhozhaev/ReviewLens/actions/workflows/ci.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
+[![Next.js 14](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+[![Tests](https://img.shields.io/badge/tests-51%20unit-success)](https://github.com/Arlikhozhaev/ReviewLens/blob/main/README.md#testing--ci)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Live demo](https://review-lens-app.vercel.app/) · [Report an issue](mailto:arlikhozhaevca@gmail.com)
+**[Live app](https://review-lens-app.vercel.app/)** · **[Try sample data](https://review-lens-app.vercel.app/analyze)** · **[Report an issue](mailto:arlikhozhaevca@gmail.com)**
 
+![ReviewLens dashboard — themes, sentiment, and executive summary](/public/images/preview.png)
 
-![Portfolio Preview](/public/images/preview.png)
+---
+
+## Impact at a glance
+
+| Metric | Value |
+|--------|-------|
+| Time to insight | **< 60s** from CSV upload to themed report |
+| Reviews per upload | **500+** supported |
+| Automated unit tests | **51** (Vitest — no DB/network in CI) |
+| E2E specs | **4** (Playwright — auth gating + golden path) |
+| CI gates on every merge | **Lint · type-check · test · production build** |
+| AI pipeline stages | **4** (embed → cluster → summarize → executive summary) |
+| Share protection modes | **Password + expiry** (scrypt + HMAC cookie) |
+| Export formats | **PDF · summary CSV · raw reviews CSV** |
+
+---
+
+## The problem → the solution (XYZ)
+
+| Challenge | ReviewLens response |
+|-----------|---------------------|
+| Product teams drown in unstructured review text | **Clustered AI themes** with sentiment and an executive summary — not a wall of individual reviews |
+| Manual theming doesn't scale past a few dozen reviews | **Embedding + k-means pipeline** groups semantically similar feedback automatically |
+| Stakeholders need reports, not repo access | **Shareable dashboard links** with optional password and expiry — no account required for viewers |
+| AI pipelines fail silently in production | **Atomic job claiming**, structured JSON logs, health checks, and **51 unit tests** guarding core logic |
+| Long-running analysis blocks the UI | **Inngest background jobs** with Vercel `waitUntil` fallback — API returns immediately, status polls live |
+
+**In one sentence:** ReviewLens accepts a CSV of product reviews, runs an embeddings → clustering → LLM summarization pipeline, and delivers a stakeholder-ready insight report with PDF/CSV export and password-protected sharing.
 
 ---
 
 ## What it does
 
-1. **Upload** — Drop a CSV of reviews. Column names are detected automatically (`review`, `rating`, `author`, `date` in any format).
-2. **Embed** — Each review is converted into a 1536-dimensional vector using OpenAI's `text-embedding-3-small`.
-3. **Cluster** — k-means groups semantically similar reviews together.
-4. **Summarize** — `gpt-4o-mini` writes a theme label, description, and sentiment per cluster, plus one executive summary.
-5. **Report** — A dashboard shows sentiment breakdown, theme distribution, complaint/praise cards, export options, and a shareable URL.
+1. **Upload** — Drop a CSV or use **Try sample data**. Columns auto-detected (`review`, `rating`, `author`, `date`).
+2. **Embed** — Each review → 1536-dim vector (`text-embedding-3-small`), batched in groups of 100 with 429 retry.
+3. **Cluster** — k-means (`k = max(2, min(8, round(n / 15)))`, k-means++ init) groups similar feedback.
+4. **Summarize** — `gpt-4o-mini` labels each cluster (theme, description, sentiment) + one executive summary.
+5. **Report** — Dashboard with sentiment charts, complaint/praise cards, export menu, and shareable URL.
+
+**Live demo path:** Sign in → `/analyze` → **Try sample data** → dashboard → **Share** → copy link.
+
+---
+
+## Engineering highlights (XYZ)
+
+- **Reduced duplicate pipeline runs in concurrent requests**, measured by zero double-processing on the same session, by atomically claiming jobs with `updateMany WHERE status = PENDING`.
+- **Kept stakeholder handoff friction near zero**, measured by view-only share links requiring no login, by shipping password/expiry gates with scrypt hashing and HMAC-signed httpOnly cookies (12h).
+- **Maintained release confidence as features grew**, measured by **51 passing unit tests** and GitHub Actions CI on every push to `main`, by testing CSV detection, validation, share crypto, and API contracts without a live database in CI.
+- **Chose share-first collaboration over email invites**, measured by zero custom-domain email dependencies on Vercel, by deferring team-inbox UI while shipping PDF/CSV export and `mailto:` share drafts.
+- **Made ingestion flexible without brittle schemas**, measured by automatic column mapping across common CSV formats, by building header-detection and paste-to-review parsers with dedicated test coverage.
 
 ---
 
 ## Tech stack
 
 | Layer | Technology |
-|---|---|
+|-------|------------|
 | Framework | Next.js 14 App Router (RSC + Server Actions) |
 | Language | TypeScript (strict mode) |
 | Styling | Tailwind CSS + shadcn/ui |
@@ -38,144 +83,6 @@ ReviewLens accepts a CSV of product reviews, runs them through an AI pipeline (e
 | Monitoring | Sentry (optional) |
 | Export | jsPDF (PDF) + native CSV |
 | Testing | Vitest (unit) + Playwright (e2e) |
-
----
-
-## Getting started
-
-```bash
-git clone https://github.com/Arlikhozhaev/ReviewLens.git
-cd reviewlens
-npm install
-cp .env.example .env.local
-# Required: DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, AUTH_SECRET
-# Optional: RESEND_API_KEY, UPSTASH_*, INNGEST_*, SENTRY_*
-
-npx prisma migrate deploy
-npx prisma generate
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-### Dev sign-in (no Resend)
-
-Without `RESEND_API_KEY`, magic links print to the **terminal** when you submit the login form.
-
-### Environment variables
-
-See `.env.example` for placeholder formats. Key variables:
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | Supabase pooled connection string (port 6543) |
-| `DIRECT_URL` | Supabase direct connection string (port 5432) — for migrations |
-| `OPENAI_API_KEY` | OpenAI secret key (`sk-...`) |
-| `AUTH_SECRET` | Session signing secret (32+ chars) — required in production |
-| `AUTH_URL` | App URL (`http://localhost:3000` in dev) |
-| `NEXT_PUBLIC_APP_URL` | Public URL of the deployment |
-| `RESEND_API_KEY` | Magic link emails (production) |
-| `UPSTASH_REDIS_*` | Distributed rate limits (production) |
-| `INNGEST_*` | Background job queue (production) |
-| `INNGEST_DEV=1` | **Local only** — use with `npx inngest-cli dev` |
-| `SENTRY_DSN` | Error monitoring (optional) |
-
----
-
-## Auth & tenancy
-
-- Sign in at `/login` with an email magic link (JWT sessions, edge-safe middleware)
-- `/analyze` and `/sessions` require authentication
-- Analyses are linked to `User.id`
-- Dashboard share links (`/dashboard/[slug]`) are viewable by anyone with the link, subject to optional share protection (below)
-
-## Collaboration model (design decision)
-
-**Share-link first, not team inboxes.**
-
-Stakeholders need **read-only access** to a report — not co-editing, not org membership, not transactional email infrastructure. ReviewLens optimizes for that:
-
-| Approach | Status | Why |
-|----------|--------|-----|
-| **Share link** (+ password / expiry) | Shipped | Works on Vercel’s default domain; copy link or `mailto:` — no Resend domain verification |
-| **Export PDF / CSV** | Shipped | Offline handoff to execs and clients |
-| **Team workspaces** | Schema + API only | Built for a multi-tenant SaaS path; UI deferred to avoid Resend/domain complexity in a portfolio demo |
-
-Org models (`Organization`, `OrganizationMember`, invites) remain in Prisma for extensibility and interview discussion, but the product surface is **personal sessions + shareable reports**. That is intentional scope control for a senior-level showcase: solve the user job (distribute insights), not every possible SaaS feature.
-
-## Exporting reports
-
-The dashboard's **Export** menu produces stakeholder-ready outputs:
-
-- **PDF** — branded report (summary, sentiment, themes table), generated client-side via `jspdf` (lazy-loaded, kept out of the main bundle)
-- **Summary CSV** — themes + sentiment + executive summary, built client-side
-- **Raw reviews CSV** — streamed from `GET /api/analysis/[slug]/export`, gated by the same share access rules as the dashboard
-
-## Share protection
-
-Owners share from the dashboard **Share** dialog:
-
-- **Copy link** — works on any Vercel URL; paste into Slack, Notion, or chat
-- **Email via your mail app** — opens a pre-filled `mailto:` draft (no API keys)
-- **Password** — scrypt-hashed; viewers unlock via a form that sets an HMAC-signed, httpOnly access cookie (12h)
-- **Expiry** — 1 / 7 / 30 days or never; expired links show a friendly notice
-- The owner (analysis creator) always bypasses both gates
-
----
-
-## Production services
-
-| Service | Purpose | Required? |
-|---------|---------|-------------|
-| **Resend** | Magic link sign-in (optional in dev — links print to terminal) | Optional locally |
-| **Upstash Redis** | Rate limits across instances | Production |
-| **Inngest** | Reliable background pipeline | Production |
-| **Sentry** | Error monitoring | Recommended |
-
-### Inngest local dev
-
-```bash
-npx inngest-cli dev -u http://localhost:3000/api/inngest
-```
-
-Set `INNGEST_DEV=1` in `.env.local`. Without Inngest, the pipeline falls back to Vercel `waitUntil`.
-
----
-
-## API
-
-| Route | Auth | Description |
-|-------|------|-------------|
-| `POST /api/analysis` | Required | Create session + reviews |
-| `GET /api/sessions` | Required | List user's analyses |
-| `POST /api/analysis/[slug]/process` | Public | Start pipeline |
-| `GET /api/analysis/[slug]/status` | Public | Poll status |
-| `GET /api/analysis/[slug]/export` | Share-gated | Download raw reviews CSV |
-| `GET /api/health` | Public | DB + service flags |
-| `POST /api/inngest` | Inngest | Job worker webhook |
-
----
-
-## Testing
-
-```bash
-npm test          # Vitest unit tests (CSV detection, validation, share crypto)
-npm run test:watch
-npm run test:e2e  # Playwright golden path + auth gating
-```
-
-**Unit tests** (`*.test.ts`) are pure and CI-safe — no DB or network.
-
-**E2E tests** (`e2e/`) run against a local dev server:
-
-```bash
-npx playwright install   # first run only — downloads browsers
-npm run test:e2e
-```
-
-- `auth.setup.ts` mints a signed session cookie so authed specs skip the email flow
-- `golden-path.spec.ts` drives upload → preview → submit (create API mocked)
-- `auth-redirect.spec.ts` verifies middleware gating (no DB needed)
 
 ---
 
@@ -200,14 +107,155 @@ Executive summary  gpt-4o-mini · one call across all themes
 Persist            AnalysisResult (JSON columns) · AnalysisSession → COMPLETED
 ```
 
-The pipeline is triggered via `POST /api/analysis/[slug]/process`, which atomically claims the session using `updateMany WHERE status = PENDING` to prevent duplicate runs.
+Triggered via `POST /api/analysis/[slug]/process`. Pipeline logs include `requestId`, `sessionId`, `userId`, stage, and OpenAI `totalTokens`.
+
+---
+
+## Features
+
+### Auth & sessions
+
+- Magic-link sign-in at `/login` (JWT sessions, edge-safe middleware)
+- `/analyze` and `/sessions` require authentication; analyses scoped to `User.id`
+- Dev mode: without `RESEND_API_KEY`, magic links print to the terminal
+
+### Share protection
+
+- **Copy link** — works on any Vercel URL
+- **Email draft** — pre-filled `mailto:` (no API keys required)
+- **Password** — scrypt-hashed; viewers unlock via HMAC-signed httpOnly cookie (12h)
+- **Expiry** — 1 / 7 / 30 days or never
+- Analysis owner always bypasses gates
+
+### Export
+
+- **PDF** — branded report (summary, sentiment, themes), client-side via lazy-loaded `jspdf`
+- **Summary CSV** — themes + sentiment + executive summary
+- **Raw reviews CSV** — streamed from API, gated by same share rules as dashboard
+
+### Collaboration model (intentional scope)
+
+| Approach | Status | Why |
+|----------|--------|-----|
+| **Share link** (+ password / expiry) | Shipped | Read-only stakeholder access without org membership or custom email domains |
+| **Export PDF / CSV** | Shipped | Offline handoff to execs and clients |
+| **Team workspaces** | Schema + API only | Multi-tenant path exists in Prisma; UI deferred to keep the portfolio demo focused |
+
+---
+
+## Getting started
+
+```bash
+git clone https://github.com/Arlikhozhaev/ReviewLens.git
+cd reviewlens
+npm install
+cp .env.example .env.local
+# Required: DATABASE_URL, DIRECT_URL, OPENAI_API_KEY, AUTH_SECRET
+# Optional: RESEND_API_KEY, UPSTASH_*, INNGEST_*, SENTRY_*
+
+npx prisma migrate deploy
+npx prisma generate
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Environment variables
+
+See `.env.example`. Key variables:
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | Supabase pooled connection (port 6543, `?pgbouncer=true`) |
+| `DIRECT_URL` | Supabase direct connection (port 5432) — migrations only |
+| `OPENAI_API_KEY` | OpenAI secret key |
+| `AUTH_SECRET` | Session signing secret (32+ chars) — required in production |
+| `AUTH_URL` / `NEXT_PUBLIC_APP_URL` | App URL |
+| `RESEND_API_KEY` | Magic link emails (production) |
+| `UPSTASH_REDIS_*` | Distributed rate limits (production) |
+| `INNGEST_*` | Background job queue (production) |
+| `INNGEST_DEV=1` | Local only — use with `npx inngest-cli dev` |
+| `SENTRY_DSN` | Error monitoring (optional) |
+
+### Inngest local dev
+
+```bash
+npx inngest-cli dev -u http://localhost:3000/api/inngest
+```
+
+---
+
+## API
+
+| Route | Auth | Description |
+|-------|------|-------------|
+| `POST /api/analysis` | Required | Create session + reviews |
+| `GET /api/sessions` | Required | List user's analyses |
+| `POST /api/analysis/[slug]/process` | Public | Start pipeline |
+| `GET /api/analysis/[slug]/status` | Public | Poll status |
+| `GET /api/analysis/[slug]/export` | Share-gated | Download raw reviews CSV |
+| `GET /api/health` | Public | DB + service flags |
+| `POST /api/inngest` | Inngest | Job worker webhook |
+
+---
+
+## Testing & CI
+
+```bash
+npm test          # 51 Vitest unit tests
+npm run test:watch
+npm run test:e2e  # 4 Playwright specs (golden path + auth gating)
+```
+
+**CI** (`.github/workflows/ci.yml`) on every push/PR to `main`:
+
+1. ESLint  
+2. `tsc --noEmit`  
+3. Vitest (no live DB or network)  
+4. Production build  
+
+**E2E setup:**
+
+```bash
+npx playwright install   # first run only
+npm run test:e2e
+```
+
+- `auth.setup.ts` — signed session cookie for authed specs  
+- `golden-path.spec.ts` — upload → preview → submit  
+- `auth-redirect.spec.ts` — middleware gating without DB  
+
+---
+
+## Production services
+
+| Service | Purpose | Required? |
+|---------|---------|-----------|
+| **Resend** | Magic link sign-in | Optional locally |
+| **Upstash Redis** | Rate limits across instances | Production |
+| **Inngest** | Reliable background pipeline | Production |
+| **Sentry** | Error monitoring | Recommended |
+
+---
+
+## Deployment
+
+Deploys to **Vercel**. Add environment variables from `.env.example` (except `INNGEST_DEV`).
+
+1. Push to GitHub and merge to `main` (CI must pass)
+2. Import repo in Vercel
+3. Add Production environment variables
+4. Run `npx prisma migrate deploy` against production DB
+5. Redeploy
+
+Supabase pgbouncer handles pooling — `DATABASE_URL` uses `?pgbouncer=true`; `DIRECT_URL` for migrations only.
 
 ---
 
 ## Scripts
 
 ```bash
-npm run dev          # Start development server
+npm run dev          # Development server
 npm run build        # prisma generate + production build
 npm run type-check   # tsc --noEmit
 npm run lint         # ESLint
@@ -218,40 +266,26 @@ npm run test:e2e     # Playwright
 
 ---
 
-## Logs
-
-Structured JSON logs include `requestId`, `sessionId`, `userId`, pipeline `stage`, and OpenAI `totalTokens`.
-
----
-
-## Deployment
-
-The app deploys to Vercel. Add all environment variables from `.env.example` to Vercel (except `INNGEST_DEV`).
-
-1. Push to GitHub and merge to `main`
-2. Import the repo in Vercel (or connect existing project)
-3. Add environment variables for Production
-4. Run `npx prisma migrate deploy` against your production database
-5. Redeploy
-
-Connection pooling is handled by Supabase's pgbouncer. The `?pgbouncer=true` flag on `DATABASE_URL` is required — Prisma uses the `DIRECT_URL` for migrations only.
-
----
-
 ## Interview talking points
 
-Use these when presenting ReviewLens in screens or on your resume:
-
-1. **Problem** — Product teams drown in unstructured review text; manual theming doesn’t scale.
-2. **Approach** — Embeddings + k-means clustering + LLM summarization, with atomic job claiming and share-gated read-only reports.
-3. **Tradeoff** — Built org/tenant models but shipped **share-link collaboration** instead of email invites (no custom domain on Vercel).
-4. **Reliability** — Inngest background jobs with `waitUntil` fallback, Upstash rate limits, health endpoint, 51+ unit tests + Playwright e2e, GitHub Actions CI.
-5. **Outcome** — Upload CSV → themed report in under 60s, export PDF/CSV, password-protected share links for stakeholders.
-
-**Live demo path:** Sign in → `/analyze` → **Try sample data** → wait for dashboard → **Share** → copy link.
+1. **Problem** — Unstructured review text doesn't scale; manual theming breaks past dozens of rows.
+2. **Approach** — Embeddings + k-means + LLM summarization with atomic job claiming and share-gated read-only reports.
+3. **Tradeoff** — Built org/tenant models but shipped **share-link collaboration** instead of email invites (no custom domain on Vercel free tier).
+4. **Reliability** — Inngest + `waitUntil` fallback, Upstash rate limits, `/api/health`, **51 unit tests**, Playwright e2e, GitHub Actions CI.
+5. **Outcome** — CSV → themed report in **< 60s**, PDF/CSV export, password-protected links for stakeholders.
 
 ---
 
 ## License
 
 MIT
+
+---
+
+<p align="center">
+  <sub>
+    Built by <a href="https://github.com/Arlikhozhaev">Abdu Alim Arlikhozhaev</a> ·
+    <a href="https://review-lens-app.vercel.app/">Live demo</a> ·
+    <a href="https://github.com/Arlikhozhaev/ReviewLens/issues">Issues</a>
+  </sub>
+</p>
