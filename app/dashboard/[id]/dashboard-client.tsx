@@ -92,7 +92,8 @@ export function DashboardClient({
 
   const fetchStatus = useCallback(async (): Promise<AnalysisStatus> => {
     const data = await apiFetch<AnalysisStatusResponse>(
-      `/api/analysis/${slug}/status`
+      `/api/analysis/${slug}/status`,
+      { credentials: "include" }
     );
     setStatus(data.status);
     setTotalReviews(data.totalReviews);
@@ -141,11 +142,17 @@ export function DashboardClient({
           return;
         }
       } catch (err) {
-        setPageError(
-          err instanceof ApiError
-            ? err.message
-            : "Could not reach the server. Check your connection."
-        );
+        if (err instanceof ApiError && err.statusCode === 401) {
+          setPageError(
+            "Share access expired. Refresh the page and enter the password again."
+          );
+        } else {
+          setPageError(
+            err instanceof ApiError
+              ? err.message
+              : "Could not reach the server. Check your connection."
+          );
+        }
         stopPolling();
         return;
       }

@@ -70,3 +70,33 @@ export function verifyShareAccessToken(
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+
+// ── Viewer access gate (password + expiry) ───────────────────────────────────
+
+export type ShareAccessSession = {
+  id: string;
+  sharePasswordHash: string | null;
+  shareExpiresAt: Date | null;
+};
+
+export type ShareAccessResult =
+  | { allowed: true }
+  | { allowed: false; status: 401 | 410; error: string };
+
+/** Returns whether a non-owner viewer may read shared analysis data. */
+export function checkShareAccess(
+  session: ShareAccessSession,
+  cookieToken: string | undefined
+): ShareAccessResult {
+  if (isShareExpired(session.shareExpiresAt)) {
+    return { allowed: false, status: 410, error: "This link has expired." };
+  }
+
+  if (session.sharePasswordHash) {
+    if (!verifyShareAccessToken(cookieToken, session.id)) {
+      return { allowed: false, status: 401, error: "Password required" };
+    }
+  }
+
+  return { allowed: true };
+}
