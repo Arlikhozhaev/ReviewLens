@@ -13,6 +13,7 @@ import {
   requireAuthUser,
   unauthorizedResponse,
 } from "@/lib/auth-helpers";
+import { mapCreateAnalysisError } from "@/lib/create-analysis-errors";
 import { getMembership } from "@/lib/org/access";
 import { createLogger } from "@/lib/logger";
 import type { ApiResponse } from "@/types";
@@ -138,14 +139,18 @@ export async function POST(
       },
     });
   } catch (error) {
-    log.error("Failed to create analysis session", { error: String(error) });
+    const mapped = mapCreateAnalysisError(error);
+    log.error("Failed to create analysis session", {
+      error: String(error),
+      code: mapped.code,
+    });
     return NextResponse.json(
       {
         success: false as const,
-        error: "Failed to create analysis session.",
-        code: "INTERNAL_ERROR",
+        error: mapped.message,
+        code: mapped.code,
       },
-      { status: 500 }
+      { status: mapped.status }
     );
   }
 }
