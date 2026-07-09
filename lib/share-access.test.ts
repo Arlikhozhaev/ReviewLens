@@ -6,6 +6,7 @@ import {
   issueShareAccessToken,
   verifyShareAccessToken,
   shareAccessCookieName,
+  checkShareAccess,
 } from "./share-access";
 
 describe("share password hashing", () => {
@@ -74,5 +75,61 @@ describe("share access tokens", () => {
 describe("shareAccessCookieName", () => {
   it("namespaces by session id", () => {
     expect(shareAccessCookieName("abc")).toBe("rl_share_abc");
+  });
+});
+
+describe("checkShareAccess", () => {
+  const baseSession = {
+    id: "sess_1",
+    sharePasswordHash: null as string | null,
+    shareExpiresAt: null as Date | null,
+  };
+
+  it("allows access when no password is set and link is not expired", () => {
+    expect(checkShareAccess(baseSession, undefined)).toEqual({
+      allowed: true,
+    });
+  });
+
+  it("returns 410 when the share link has expired", () => {
+    const result = checkShareAccess(
+      {
+        ...baseSession,
+        shareExpiresAt: new Date(Date.now() - 1000),
+      },
+      undefined
+    );
+    expect(result).toEqual({
+      allowed: false,
+      status: 410,
+      error: "This link has expired.",
+    });
+  });
+
+  it("returns 401 when a password is required but cookie is missing", () => {
+    const result = checkShareAccess(
+      {
+        ...baseSession,
+        sharePasswordHash: hashSharePassword("secret"),
+      },
+      undefined
+    );
+    expect(result).toEqual({
+      allowed: false,
+      status: 401,
+      error: "Password required",
+    });
+  });
+
+  it("allows access when a valid share cookie is present", () => {
+    const token = issueShareAccessToken("sess_1");
+    const result = checkShareAccess(
+      {
+        ...baseSession,
+        sharePasswordHash: hashSharePassword("secret"),
+      },
+      token
+    );
+    expect(result).toEqual({ allowed: true });
   });
 });

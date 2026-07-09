@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { PIPELINE_STALE_MS } from "@/lib/constants";
+import {
+  checkShareAccess,
+  shareAccessCookieName,
+} from "@/lib/share-access";
+import { canViewSession, isSessionCreator } from "@/lib/org/access";
 import type { ApiResponse, SentimentBreakdown } from "@/types";
 import type { ThemeAnalysis, StoredAnalysisResult } from "@/features/analysis/types";
 
@@ -25,9 +32,14 @@ export async function GET(
     const session = await prisma.analysisSession.findUnique({
       where: { shareableSlug: slug },
       select: {
+        id: true,
+        userId: true,
+        organizationId: true,
         status: true,
         totalReviews: true,
         updatedAt: true,
+        sharePasswordHash: true,
+        shareExpiresAt: true,
         result: {
           select: {
             executiveSummary: true,
@@ -42,9 +54,27 @@ export async function GET(
 
     if (!session) {
       return NextResponse.json(
-        { success: false as const, error: "Session not found" },
-        { status: 404 }
+        { success: false as const, error: "Forbidden" },
+        { status: 403 }
       );
+    }
+
+    const authUser = await auth();
+    const userId = authUser?.user?.id;
+    const isCreator = isSessionCreator(userId, session);
+    const hasTeamAccess = await canViewSession(userId, session);
+
+    if (!isCreator && !hasTeamAccess) {
+      const cookieToken = cookies().get(
+        shareAccessCookieName(session.id)
+      )?.value;
+      const shareAccess = checkShareAccess(session, cookieToken);
+      if (!shareAccess.allowed) {
+        return NextResponse.json(
+          { success: false as const, error: shareAccess.error },
+          { status: shareAccess.status }
+        );
+      }
     }
 
     const staleThreshold = new Date(Date.now() - PIPELINE_STALE_MS);
@@ -60,7 +90,8 @@ export async function GET(
     if (session.status === "COMPLETED" && session.result) {
       payload.result = {
         executiveSummary: session.result.executiveSummary,
-        sentimentBreakdown: session.result.sentimentData as unknown as SentimentBreakdown,
+        sentimentBreakdown:
+          session.result.sentimentData as unknown as SentimentBreakdown,
         themes: session.result.themesData as unknown as ThemeAnalysis[],
         averageRating: session.result.averageRating ?? undefined,
         processingMs: session.result.processingMs ?? 0,
