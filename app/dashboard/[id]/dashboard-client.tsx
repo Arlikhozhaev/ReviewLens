@@ -103,6 +103,8 @@ export function DashboardClient({
   }, [slug]);
 
   const startPipeline = useCallback(async () => {
+    if (!isOwner) return;
+
     try {
       await apiPost(`/api/analysis/${slug}/process`, {});
     } catch (err) {
@@ -111,7 +113,7 @@ export function DashboardClient({
       }
       // Non-fatal — pipeline may already be running
     }
-  }, [slug]);
+  }, [slug, isOwner]);
 
   const retryAnalysis = useCallback(async () => {
     setPageError(null);
@@ -131,7 +133,10 @@ export function DashboardClient({
     }, 1_000);
 
     async function init() {
-      if (initialStatus === "PENDING" || initialStatus === "PROCESSING") {
+      if (
+        isOwner &&
+        (initialStatus === "PENDING" || initialStatus === "PROCESSING")
+      ) {
         await startPipeline();
       }
 
@@ -173,6 +178,7 @@ export function DashboardClient({
     return () => stopPolling();
   }, [
     slug,
+    isOwner,
     initialStatus,
     fetchStatus,
     startPipeline,

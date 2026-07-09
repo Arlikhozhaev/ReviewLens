@@ -8,7 +8,11 @@ import {
 } from "@/lib/rate-limit";
 import { triggerAnalysisPipeline } from "@/lib/jobs/pipeline-trigger";
 import { createLogger } from "@/lib/logger";
-import { getRequestId } from "@/lib/auth-helpers";
+import {
+  getRequestId,
+  requireAuthUser,
+  unauthorizedResponse,
+} from "@/lib/auth-helpers";
 import type { ApiResponse } from "@/types";
 
 export const maxDuration = 60;
@@ -46,16 +50,28 @@ export async function POST(
     );
   }
 
+  const authUser = await requireAuthUser();
+  if (!authUser) {
+    return unauthorizedResponse();
+  }
+
   try {
     const session = await prisma.analysisSession.findUnique({
       where: { shareableSlug: slug },
-      select: { id: true, status: true, updatedAt: true },
+      select: { id: true, userId: true, status: true, updatedAt: true },
     });
 
     if (!session) {
       return NextResponse.json(
-        { success: false as const, error: "Session not found" },
-        { status: 404 }
+        { success: false as const, error: "Forbidden", code: "FORBIDDEN" },
+        { status: 403 }
+      );
+    }
+
+    if (session.userId !== authUser.userId) {
+      return NextResponse.json(
+        { success: false as const, error: "Forbidden", code: "FORBIDDEN" },
+        { status: 403 }
       );
     }
 

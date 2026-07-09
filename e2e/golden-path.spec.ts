@@ -31,6 +31,22 @@ test.describe("golden path: upload → preview → submit", () => {
       });
     });
 
+    // Process is owner-only; mock it so the dashboard handoff stays deterministic.
+    await page.route("**/api/analysis/*/process", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: { started: true, mode: "inline" },
+        }),
+      });
+    });
+
     await page.goto("/analyze");
 
     // Upload the CSV via the (possibly hidden) file input.
