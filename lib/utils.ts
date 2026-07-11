@@ -1,4 +1,5 @@
 import { type ClassValue, clsx } from "clsx";
+import { randomBytes } from "crypto";
 import { twMerge } from "tailwind-merge";
 
 // ── Styling ───────────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ export function truncate(str: string, maxLength: number): string {
 // ── IDs ───────────────────────────────────────────────────────────────────────
 
 export function generateShareableSlug(): string {
-  return Math.random().toString(36).slice(2, 10);
+  return randomBytes(12).toString("base64url");
 }
 
 // ── Type guards ───────────────────────────────────────────────────────────────

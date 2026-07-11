@@ -1,4 +1,5 @@
 import type { OrgRole } from "@prisma/client";
+import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 
 const ROLE_RANK: Record<OrgRole, number> = {
@@ -20,7 +21,8 @@ export function slugifyOrgName(name: string): string {
 export async function generateUniqueOrgSlug(name: string): Promise<string> {
   const base = slugifyOrgName(name);
   for (let i = 0; i < 5; i++) {
-    const suffix = i === 0 ? "" : `-${Math.random().toString(36).slice(2, 6)}`;
+    const suffix =
+      i === 0 ? "" : `-${randomBytes(3).toString("base64url")}`;
     const slug = `${base}${suffix}`;
     const existing = await prisma.organization.findUnique({ where: { slug } });
     if (!existing) return slug;

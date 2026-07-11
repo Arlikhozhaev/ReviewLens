@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { analyzeRequestSchema } from "@/lib/validations/review";
 import { generateShareableSlug } from "@/lib/utils";
@@ -100,20 +101,43 @@ export async function POST(
           ? "PASTE"
           : "URL";
 
-    const shareableSlug = generateShareableSlug();
+    const MAX_SLUG_RETRIES = 5;
+    let session: Awaited<ReturnType<typeof prisma.analysisSession.create>> | null =
+      null;
 
-    const session = await prisma.analysisSession.create({
-      data: {
-        shareableSlug,
-        userId: authUser.userId,
-        organizationId: organizationId ?? null,
-        sourceType: prismaSourceType,
-        sourceUrl: sourceUrl ?? null,
-        fileName: fileName ?? null,
-        status: "PENDING",
-        totalReviews: reviews.length,
-      },
-    });
+    for (let attempt = 0; attempt < MAX_SLUG_RETRIES; attempt++) {
+      try {
+        session = await prisma.analysisSession.create({
+          data: {
+            shareableSlug: generateShareableSlug(),
+            userId: authUser.userId,
+            organizationId: organizationId ?? null,
+            sourceType: prismaSourceType,
+            sourceUrl: sourceUrl ?? null,
+            fileName: fileName ?? null,
+            status: "PENDING",
+            totalReviews: reviews.length,
+          },
+        });
+        break;
+      } catch (error) {
+        const isSlugCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002" &&
+          error.meta?.target &&
+          Array.isArray(error.meta.target) &&
+          error.meta.target.includes("shareableSlug");
+
+        if (isSlugCollision && attempt < MAX_SLUG_RETRIES - 1) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!session) {
+      throw new Error("Failed to allocate a unique shareable slug");
+    }
 
     await prisma.review.createMany({
       data: reviews.map((r) => ({
