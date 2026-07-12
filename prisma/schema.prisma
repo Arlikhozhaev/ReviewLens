@@ -20,8 +20,6 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
-  orgMemberships OrganizationMember[]
-  orgInvitesSent OrganizationInvite[] @relation("OrgInvitedBy")
   analyses      AnalysisSession[]
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -71,7 +69,6 @@ model AnalysisSession {
   id                String         @id @default(cuid())
   shareableSlug     String         @unique
   userId            String?
-  organizationId    String?
   sourceType        SourceType
   sourceUrl         String?
   fileName          String?
@@ -82,14 +79,12 @@ model AnalysisSession {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  result       AnalysisResult?
-  reviews      Review[]
+  user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  result  AnalysisResult?
+  reviews Review[]
 
   @@index([shareableSlug])
   @@index([userId])
-  @@index([organizationId])
   @@index([createdAt])
 }
 
@@ -134,63 +129,4 @@ enum AnalysisStatus {
   PROCESSING
   COMPLETED
   FAILED
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Team workspaces
-// ─────────────────────────────────────────────────────────────────────────────
-
-model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  plan      OrgPlan  @default(FREE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  members  OrganizationMember[]
-  invites  OrganizationInvite[]
-  sessions AnalysisSession[]
-}
-
-model OrganizationMember {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  role           OrgRole  @default(MEMBER)
-  joinedAt       DateTime @default(now())
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, userId])
-  @@index([userId])
-}
-
-model OrganizationInvite {
-  id             String   @id @default(cuid())
-  organizationId String
-  email          String
-  role           OrgRole  @default(MEMBER)
-  token          String   @unique @default(cuid())
-  expiresAt      DateTime
-  invitedById    String
-  createdAt      DateTime @default(now())
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy    User         @relation("OrgInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, email])
-  @@index([token])
-}
-
-enum OrgPlan {
-  FREE
-  PRO
-}
-
-enum OrgRole {
-  OWNER
-  ADMIN
-  MEMBER
 }

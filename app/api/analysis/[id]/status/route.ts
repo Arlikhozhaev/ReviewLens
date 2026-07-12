@@ -7,7 +7,7 @@ import {
   checkShareAccess,
   shareAccessCookieName,
 } from "@/lib/share-access";
-import { canViewSession, isSessionCreator } from "@/lib/org/access";
+import { isSessionCreator } from "@/lib/session-access";
 import type { ApiResponse, SentimentBreakdown } from "@/types";
 import type { ThemeAnalysis, StoredAnalysisResult } from "@/features/analysis/types";
 
@@ -34,7 +34,6 @@ export async function GET(
       select: {
         id: true,
         userId: true,
-        organizationId: true,
         status: true,
         totalReviews: true,
         updatedAt: true,
@@ -62,9 +61,8 @@ export async function GET(
     const authUser = await auth();
     const userId = authUser?.user?.id;
     const isCreator = isSessionCreator(userId, session);
-    const hasTeamAccess = await canViewSession(userId, session);
 
-    if (!isCreator && !hasTeamAccess) {
+    if (!isCreator) {
       const cookieToken = cookies().get(
         shareAccessCookieName(session.id)
       )?.value;

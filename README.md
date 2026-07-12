@@ -177,7 +177,6 @@ npx tsx --env-file=.env.local scripts/benchmark-sample.ts   # live pipeline + to
 |----------|--------|-----|
 | **Share link** (+ password / expiry) | Shipped | Read-only stakeholder access without org membership or custom email domains |
 | **Export PDF / CSV** | Shipped | Offline handoff to execs and clients |
-| **Team workspaces** | Schema + API only | Multi-tenant path exists in Prisma; UI deferred to keep the portfolio demo focused |
 
 ---
 
@@ -309,7 +308,7 @@ npx tsx scripts/benchmark-sample.ts --estimate-only   # Case study metrics (offl
 
 1. **Problem** — Unstructured review text doesn't scale; manual theming breaks past dozens of rows.
 2. **Approach** — Embeddings + k-means + LLM summarization with atomic job claiming and share-gated read-only reports.
-3. **Tradeoff** — Built org/tenant models but shipped **share-link collaboration** instead of email invites (no custom domain on Vercel free tier).
+3. **Tradeoff** — Chose **share-link collaboration** over team workspaces and email invites (no custom domain on Vercel free tier; removed half-built org schema in RL-013).
 4. **Reliability** — Inngest + `waitUntil` fallback, Upstash rate limits, `/api/health`, **93 unit tests**, Playwright e2e, GitHub Actions CI.
 5. **Outcome** — CSV → themed report in **< 60s**, **~$0.0004** per 12-review sample run, PDF/CSV export, password-protected links for stakeholders.
 

@@ -7,7 +7,7 @@ import {
   shareAccessCookieName,
   verifyShareAccessToken,
 } from "@/lib/share-access";
-import { canViewSession, isSessionCreator } from "@/lib/org/access";
+import { isSessionCreator } from "@/lib/session-access";
 
 interface RouteContext {
   params: { id: string };
@@ -33,7 +33,6 @@ export async function GET(_req: Request, { params }: RouteContext) {
     select: {
       id: true,
       userId: true,
-      organizationId: true,
       fileName: true,
       sharePasswordHash: true,
       shareExpiresAt: true,
@@ -61,9 +60,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
   const authUser = await auth();
   const userId = authUser?.user?.id;
   const isCreator = isSessionCreator(userId, session);
-  const hasTeamAccess = await canViewSession(userId, session);
 
-  if (!isCreator && !hasTeamAccess) {
+  if (!isCreator) {
     if (isShareExpired(session.shareExpiresAt)) {
       return NextResponse.json(
         { success: false as const, error: "This link has expired." },

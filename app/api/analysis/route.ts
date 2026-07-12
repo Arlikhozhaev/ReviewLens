@@ -15,7 +15,6 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth-helpers";
 import { mapCreateAnalysisError } from "@/lib/create-analysis-errors";
-import { getMembership } from "@/lib/org/access";
 import { createLogger } from "@/lib/logger";
 import type { ApiResponse } from "@/types";
 
@@ -77,22 +76,7 @@ export async function POST(
       );
     }
 
-    const { reviews, sourceType, sourceUrl, fileName, organizationId } =
-      parsed.data;
-
-    if (organizationId) {
-      const membership = await getMembership(authUser.userId, organizationId);
-      if (!membership) {
-        return NextResponse.json(
-          {
-            success: false as const,
-            error: "You are not a member of that workspace",
-            code: "FORBIDDEN",
-          },
-          { status: 403 }
-        );
-      }
-    }
+    const { reviews, sourceType, sourceUrl, fileName } = parsed.data;
 
     const prismaSourceType =
       sourceType === "csv"
@@ -111,7 +95,6 @@ export async function POST(
           data: {
             shareableSlug: generateShareableSlug(),
             userId: authUser.userId,
-            organizationId: organizationId ?? null,
             sourceType: prismaSourceType,
             sourceUrl: sourceUrl ?? null,
             fileName: fileName ?? null,

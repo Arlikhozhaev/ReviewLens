@@ -8,7 +8,6 @@ import {
 const mockFindUnique = vi.fn();
 const mockAuth = vi.fn();
 const mockCookiesGet = vi.fn();
-const mockCanViewSession = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -26,12 +25,6 @@ vi.mock("next/headers", () => ({
   cookies: () => ({
     get: (name: string) => mockCookiesGet(name),
   }),
-}));
-
-vi.mock("@/lib/org/access", () => ({
-  isSessionCreator: (userId: string | undefined, session: { userId: string | null }) =>
-    Boolean(userId && session.userId === userId),
-  canViewSession: (...args: unknown[]) => mockCanViewSession(...args),
 }));
 
 import { GET } from "./route";
@@ -52,7 +45,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
     userId: OWNER_ID,
-    organizationId: null,
     status: "COMPLETED",
     totalReviews: 42,
     updatedAt: new Date(),
@@ -72,7 +64,6 @@ function callGet(slug = SLUG) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue(null);
-  mockCanViewSession.mockResolvedValue(false);
   mockCookiesGet.mockReturnValue(undefined);
 });
 
