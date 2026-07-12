@@ -220,7 +220,7 @@ npm run test:e2e
 ```
 
 - `auth.setup.ts` — signed session cookie for authed specs  
-- `golden-path.spec.ts` — upload → preview → submit  
+- `golden-path.spec.ts` — upload → preview → submit (mocks create/process/status APIs)
 - `auth-redirect.spec.ts` — middleware gating without DB  
 
 ---

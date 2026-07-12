@@ -47,6 +47,25 @@ test.describe("golden path: upload → preview → submit", () => {
       });
     });
 
+    await page.route("**/api/analysis/*/status", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            status: "PROCESSING",
+            totalReviews: 6,
+            isStale: false,
+          },
+        }),
+      });
+    });
+
     await page.goto("/analyze");
 
     // Upload the CSV via the (possibly hidden) file input.
@@ -58,8 +77,10 @@ test.describe("golden path: upload → preview → submit", () => {
         buffer: Buffer.from(CSV),
       });
 
-    // Client-side parse advances to the preview step.
-    await expect(page.getByText(/parsed successfully/i)).toBeVisible();
+    // Client-side parse advances to the preview step (Step 2 · Verify).
+    await expect(page.getByText(/reviews ready/i)).toBeVisible({
+      timeout: 15_000,
+    });
 
     // Submit kicks off analysis and routes to the dashboard.
     await page.getByRole("button", { name: /start ai analysis/i }).click();
