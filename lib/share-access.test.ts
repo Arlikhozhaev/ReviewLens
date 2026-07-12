@@ -57,7 +57,9 @@ describe("share access tokens", () => {
 
   it("rejects a tampered token", () => {
     const token = issueShareAccessToken("sess_1");
-    const tampered = token.slice(0, -2) + "00";
+    // Flip the last signature character — must differ from original (slice+"00" is flaky when token already ends in "00").
+    const last = token.at(-1)!;
+    const tampered = token.slice(0, -1) + (last === "a" ? "b" : "a");
     expect(verifyShareAccessToken(tampered, "sess_1")).toBe(false);
   });
 
