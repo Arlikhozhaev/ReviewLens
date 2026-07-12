@@ -54,6 +54,9 @@ export default defineConfig({
       DATABASE_URL:
         process.env.DATABASE_URL ??
         "postgresql://ci:ci@localhost:5432/reviewlens_ci",
+      DIRECT_URL:
+        process.env.DIRECT_URL ??
+        "postgresql://ci:ci@localhost:5432/reviewlens_ci",
       OPENAI_API_KEY:
         process.env.OPENAI_API_KEY ?? "sk-ci-placeholder-key-for-build-only",
     },

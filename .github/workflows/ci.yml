@@ -12,6 +12,7 @@ concurrency:
 
 env:
   DATABASE_URL: postgresql://ci:ci@localhost:5432/reviewlens_ci
+  DIRECT_URL: postgresql://ci:ci@localhost:5432/reviewlens_ci
   OPENAI_API_KEY: sk-ci-placeholder-key-for-build-only
   AUTH_SECRET: ci-only-auth-secret-min-32-characters-long
   NEXT_PUBLIC_APP_URL: http://localhost:3000
