@@ -83,7 +83,6 @@ export const analyzeRequestSchema = z.object({
   sourceType: z.enum(["csv", "url", "paste"]),
   sourceUrl: z.string().url().optional(),
   fileName: z.string().optional(),
-  organizationId: z.string().cuid().optional(),
 });
 
 // ── File upload (client-side pre-check) ───────────────────────────────────────

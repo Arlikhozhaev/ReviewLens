@@ -13,9 +13,8 @@ import { ShareGate, ShareExpired } from "./share-gate";
 import type { StoredAnalysisResult, ThemeAnalysis } from "@/features/analysis/types";
 import type { SentimentBreakdown } from "@/types";
 import {
-  canViewSession,
   isSessionCreator,
-} from "@/lib/org/access";
+} from "@/lib/session-access";
 
 interface Props {
   params: { id: string };
@@ -60,7 +59,6 @@ export default async function DashboardPage({ params }: Props) {
     select: {
       id: true,
       userId: true,
-      organizationId: true,
       status: true,
       totalReviews: true,
       fileName: true,
@@ -85,10 +83,9 @@ export default async function DashboardPage({ params }: Props) {
   const authUser = await auth();
   const userId = authUser?.user?.id;
   const isCreator = isSessionCreator(userId, session);
-  const hasTeamAccess = await canViewSession(userId, session);
   const isOwner = isCreator;
 
-  if (!isCreator && !hasTeamAccess) {
+  if (!isCreator) {
     if (isShareExpired(session.shareExpiresAt)) {
       return <ShareExpired />;
     }

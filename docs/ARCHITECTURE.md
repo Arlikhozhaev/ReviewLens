@@ -139,21 +139,19 @@ flowchart LR
 
 ## 4. Architecture Decision Records
 
-### ADR-001: Share-first vs team workspaces
+### ADR-001: Share-first collaboration (no team workspaces)
 
-**Status:** Accepted (share-first primary; workspaces partial)
+**Status:** Accepted (share-first only; workspace schema removed in RL-013)
 
-**Context:** Recruiters and PMs need a single link to an analysis report. Some users asked for team lists and org billing.
+**Context:** Recruiters and PMs need a single link to an analysis report. A half-built `Organization` / invite model added scope-creep risk without shipping a real team UX.
 
-**Decision:** Optimize for **shareable slug URLs** with optional password + expiry. Dashboard, status, and export use the same share gate. Magic-link auth identifies the owner.
-
-**Workspaces:** `Organization` / `OrganizationMember` schema exists for future team features but is not the primary UX. Org-scoped sessions are supported in the data model; UI is minimal.
+**Decision:** Optimize for **shareable slug URLs** with optional password + expiry. Dashboard, status, and export use the same share gate. Magic-link auth identifies the owner. Analyses are scoped to `User.id` only.
 
 **Consequences**
 
 - (+) Demo and interview story stay simple: upload → link → share.
 - (+) Security model is one coherent path (owner vs share viewer).
-- (−) Half-built workspace UI is scope-creep risk — see backlog RL-013 (remove or ship).
+- (+) No dead schema or API surface for interviewers to probe.
 
 ---
 
@@ -290,6 +288,5 @@ See `README.md` § Testing & CI for commands.
 
 ## 8. Related backlog
 
-- **RL-013:** Remove or ship workspace feature (ADR-001 consequence).
 - **RL-012:** Embedding persistence + cost tracking.
 - **RL-016–020:** Redis status cache, Sentry stages, structured errors, indexes, per-user process rate limits.
