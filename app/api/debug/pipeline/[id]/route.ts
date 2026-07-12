@@ -1,25 +1,38 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuthUser } from "@/lib/auth-helpers";
 import { runAnalysisPipeline } from "@/features/analysis";
+
+function notFound() {
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
+}
 
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
 ) {
-  // Only usable in development
   if (process.env.NODE_ENV !== "development") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 403 });
+    return notFound();
+  }
+
+  const authUser = await requireAuthUser();
+  if (!authUser) {
+    return notFound();
   }
 
   const { id: slug } = params;
 
   const session = await prisma.analysisSession.findUnique({
     where: { shareableSlug: slug },
-    select: { id: true, status: true },
+    select: { id: true, userId: true, status: true },
   });
 
   if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    return notFound();
+  }
+
+  if (session.userId !== authUser.userId) {
+    return notFound();
   }
 
   // Force reset to PENDING so pipeline can re-run
