@@ -6,7 +6,7 @@
 [![CI](https://github.com/Arlikhozhaev/ReviewLens/actions/workflows/ci.yml/badge.svg)](https://github.com/Arlikhozhaev/ReviewLens/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/)
 [![Next.js 14](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
-[![Tests](https://img.shields.io/badge/tests-51%20unit-success)](https://github.com/Arlikhozhaev/ReviewLens/blob/main/README.md#testing--ci)
+[![Tests](https://img.shields.io/badge/tests-93%20unit-success)](https://github.com/Arlikhozhaev/ReviewLens/blob/main/README.md#testing--ci)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **[Live app](https://review-lens-app.vercel.app/)** · **[Try sample data](https://review-lens-app.vercel.app/analyze)** · **[Report an issue](mailto:arlikhozhaevca@gmail.com)**
@@ -21,7 +21,7 @@
 |--------|-------|
 | Time to insight | **< 60s** from CSV upload to themed report |
 | Reviews per upload | **500+** supported |
-| Automated unit tests | **51** (Vitest — no DB/network in CI) |
+| Automated unit tests | **93** (Vitest — no DB/network in CI) |
 | E2E specs | **4** (Playwright — auth gating + golden path) |
 | CI gates on every merge | **Lint · type-check · test · production build** |
 | AI pipeline stages | **4** (embed → cluster → summarize → executive summary) |
@@ -37,7 +37,7 @@
 | Product teams drown in unstructured review text | **Clustered AI themes** with sentiment and an executive summary — not a wall of individual reviews |
 | Manual theming doesn't scale past a few dozen reviews | **Embedding + k-means pipeline** groups semantically similar feedback automatically |
 | Stakeholders need reports, not repo access | **Shareable dashboard links** with optional password and expiry — no account required for viewers |
-| AI pipelines fail silently in production | **Atomic job claiming**, structured JSON logs, health checks, and **51 unit tests** guarding core logic |
+| AI pipelines fail silently in production | **Atomic job claiming**, structured JSON logs, health checks, and **93 unit tests** guarding core logic |
 | Long-running analysis blocks the UI | **Inngest background jobs** with Vercel `waitUntil` fallback — API returns immediately, status polls live |
 
 **In one sentence:** ReviewLens accepts a CSV of product reviews, runs an embeddings → clustering → LLM summarization pipeline, and delivers a stakeholder-ready insight report with PDF/CSV export and password-protected sharing.
@@ -60,7 +60,7 @@
 
 - **Reduced duplicate pipeline runs in concurrent requests**, measured by zero double-processing on the same session, by atomically claiming jobs with `updateMany WHERE status = PENDING`.
 - **Kept stakeholder handoff friction near zero**, measured by view-only share links requiring no login, by shipping password/expiry gates with scrypt hashing and HMAC-signed httpOnly cookies (12h).
-- **Maintained release confidence as features grew**, measured by **51 passing unit tests** and GitHub Actions CI on every push to `main`, by testing CSV detection, validation, share crypto, and API contracts without a live database in CI.
+- **Maintained release confidence as features grew**, measured by **93 passing unit tests** and GitHub Actions CI on every push to `main`, by testing CSV detection, validation, share crypto, and API contracts without a live database in CI.
 - **Chose share-first collaboration over email invites**, measured by zero custom-domain email dependencies on Vercel, by deferring team-inbox UI while shipping PDF/CSV export and `mailto:` share drafts.
 - **Made ingestion flexible without brittle schemas**, measured by automatic column mapping across common CSV formats, by building header-detection and paste-to-review parsers with dedicated test coverage.
 
@@ -202,7 +202,7 @@ npx inngest-cli dev -u http://localhost:3000/api/inngest
 ## Testing & CI
 
 ```bash
-npm test          # 51 Vitest unit tests
+npm test          # 93 Vitest unit tests
 npm run test:watch
 npm run test:e2e  # 4 Playwright specs (golden path + auth gating)
 ```
@@ -271,7 +271,7 @@ npm run test:e2e     # Playwright
 1. **Problem** — Unstructured review text doesn't scale; manual theming breaks past dozens of rows.
 2. **Approach** — Embeddings + k-means + LLM summarization with atomic job claiming and share-gated read-only reports.
 3. **Tradeoff** — Built org/tenant models but shipped **share-link collaboration** instead of email invites (no custom domain on Vercel free tier).
-4. **Reliability** — Inngest + `waitUntil` fallback, Upstash rate limits, `/api/health`, **51 unit tests**, Playwright e2e, GitHub Actions CI.
+4. **Reliability** — Inngest + `waitUntil` fallback, Upstash rate limits, `/api/health`, **93 unit tests**, Playwright e2e, GitHub Actions CI.
 5. **Outcome** — CSV → themed report in **< 60s**, PDF/CSV export, password-protected links for stakeholders.
 
 ---
