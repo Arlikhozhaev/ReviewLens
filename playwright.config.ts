@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3000;
 const baseURL = `http://localhost:${PORT}`;
+const isCI = Boolean(process.env.CI);
 
 // Fixed secret so the generated auth cookie (auth.setup.ts) matches what the
 // dev server verifies. Overrides .env.local because real process.env takes
@@ -12,12 +13,17 @@ const AUTH_SECRET =
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
-  reporter: "list",
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+  reporter: isCI
+    ? [
+        ["list"],
+        ["html", { open: "never", outputFolder: "playwright-report" }],
+      ]
+    : "list",
   use: {
     baseURL,
-    trace: "on-first-retry",
+    trace: isCI ? "retain-on-failure" : "on-first-retry",
   },
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
@@ -39,12 +45,20 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 120_000,
     env: {
       AUTH_SECRET,
       AUTH_URL: baseURL,
       NEXT_PUBLIC_APP_URL: baseURL,
+      DATABASE_URL:
+        process.env.DATABASE_URL ??
+        "postgresql://ci:ci@localhost:5432/reviewlens_ci",
+      DIRECT_URL:
+        process.env.DIRECT_URL ??
+        "postgresql://ci:ci@localhost:5432/reviewlens_ci",
+      OPENAI_API_KEY:
+        process.env.OPENAI_API_KEY ?? "sk-ci-placeholder-key-for-build-only",
     },
   },
 });

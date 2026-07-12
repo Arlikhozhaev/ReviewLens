@@ -23,7 +23,7 @@
 | Reviews per upload | **500+** supported |
 | Automated unit tests | **93** (Vitest — no DB/network in CI) |
 | E2E specs | **4** (Playwright — auth gating + golden path) |
-| CI gates on every merge | **Lint · type-check · test · production build** |
+| CI gates on every merge | **Lint · type-check · test · build · Playwright e2e** |
 | AI pipeline stages | **4** (embed → cluster → summarize → executive summary) |
 | Share protection modes | **Password + expiry** (scrypt + HMAC cookie) |
 | Export formats | **PDF · summary CSV · raw reviews CSV** |
@@ -209,10 +209,8 @@ npm run test:e2e  # 4 Playwright specs (golden path + auth gating)
 
 **CI** (`.github/workflows/ci.yml`) on every push/PR to `main`:
 
-1. ESLint  
-2. `tsc --noEmit`  
-3. Vitest (no live DB or network)  
-4. Production build  
+1. **verify** — ESLint, `tsc --noEmit`, Vitest (no live DB/network), production build  
+2. **e2e** — Postgres service + `prisma migrate deploy`, Playwright (Chromium) with placeholder env; API routes mocked in specs. Trace + HTML report uploaded on failure.
 
 **E2E setup:**
 
@@ -222,7 +220,7 @@ npm run test:e2e
 ```
 
 - `auth.setup.ts` — signed session cookie for authed specs  
-- `golden-path.spec.ts` — upload → preview → submit  
+- `golden-path.spec.ts` — upload → preview → submit (mocks create/process/status APIs)
 - `auth-redirect.spec.ts` — middleware gating without DB  
 
 ---
