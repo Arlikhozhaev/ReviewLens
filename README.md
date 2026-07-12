@@ -223,6 +223,8 @@ npm run test:e2e
 - `golden-path.spec.ts` — upload → preview → submit (mocks create/process/status APIs)
 - `auth-redirect.spec.ts` — middleware gating without DB  
 
+**Architecture:** see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for C4 context, request flows, ADRs, and failure modes.
+
 ---
 
 ## Production services
